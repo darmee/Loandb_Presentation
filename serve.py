@@ -51,7 +51,7 @@ from waitress import serve  # noqa: E402
 from config.wsgi import application  # noqa: E402
 
 host = os.getenv("DJANGO_BIND_HOST", "0.0.0.0")
-port = int(os.getenv("DJANGO_PORT", "8600"))
+port = int(os.getenv("DJANGO_PORT", "8700"))
 threads = int(os.getenv("DJANGO_THREADS", "8"))
 
 print(f"Loan Reports portal -> http://{host}:{port}  ({threads} threads)", flush=True)
