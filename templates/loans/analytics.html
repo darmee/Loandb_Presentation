@@ -1,0 +1,251 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}Analytics{% endblock %}
+{% block content %}
+
+{% if presentation %}
+<style>
+  body { overflow: hidden !important; }
+  .bar, .subnav { display: none !important; }
+  .wrap {
+    max-width: none !important;
+    padding: 12px 12px 0 !important;
+    margin: 0 !important;
+    height: calc(100vh - 12px) !important;
+    overflow: hidden !important;
+    background: #f6f6f9;
+  }
+  h1 { margin-bottom: 6px; }
+  .sub { margin-bottom: 10px; }
+  .chips { display: none !important; }
+  .card { box-shadow: none; }
+  .chartwrap { overflow: hidden; }
+  .chartwrap > svg { max-height: 180px; }
+  .pie { width: 170px; }
+</style>
+{% endif %}
+
+<h1>Analytics</h1>
+<p class="sub">
+  {{ total_applications|intcomma }} application{{ total_applications|pluralize }} in the last {{ months }} months
+  &middot; &#8358;{{ total_value|floatformat:0|intcomma }} requested
+</p>
+
+<div class="chips" style="margin-bottom:18px">
+  {% for range in month_ranges %}
+    <a class="chip" href="?months={{ range }}"
+       style="{% if range == months %}background:var(--brand);color:#fff;border-color:var(--brand){% endif %}">
+      Last {{ range }} months</a>
+  {% endfor %}
+</div>
+
+<h2>Volume by product</h2>
+<div class="card" style="padding:18px;display:flex;gap:26px;align-items:center;flex-wrap:wrap">
+  {% if product_chart.empty %}
+    <p class="empty">No applications in this period.</p>
+  {% else %}
+  <svg class="pie" viewBox="0 0 {{ product_chart.size }} {{ product_chart.size }}"
+       role="img"
+       aria-label="Share of applications by product">
+    {% for s in product_chart.slices %}
+      {% if s.full %}
+        <circle cx="{{ product_chart.cx }}" cy="{{ product_chart.cy }}"
+                r="{{ product_chart.radius }}" fill="{{ s.colour }}"><title>{{ s.label }}: {{ s.pct }}%</title></circle>
+      {% else %}
+        <path d="{{ s.d }}" fill="{{ s.colour }}" stroke="#fff" stroke-width="1.5"><title>{{ s.label }}: {{ s.pct }}%</title></path>
+      {% endif %}
+      {% if s.show_label %}
+        <text x="{{ s.label_x }}" y="{{ s.label_y }}" text-anchor="middle"
+              dominant-baseline="middle" font-size="13" font-weight="600"
+              fill="#fff">{{ s.pct }}%</text>
+      {% endif %}
+    {% endfor %}
+  </svg>
+
+  <div style="flex:1 1 260px;min-width:0">
+    {% for s in product_chart.slices %}
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 0;
+                  border-bottom:1px solid var(--line)">
+        <span style="width:12px;height:12px;border-radius:3px;flex:0 0 auto;
+                     background:{{ s.colour }}"></span>
+        <span style="flex:1 1 auto">{{ s.label }}</span>
+        <strong style="font-variant-numeric:tabular-nums">{{ s.value|intcomma }}</strong>
+        <span class="muted" style="width:52px;text-align:right;
+              font-variant-numeric:tabular-nums">{{ s.pct }}%</span>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="card scroll" style="margin-top:12px">
+  <table class="stack">
+    <thead><tr><th>Product</th><th class="num">Applications</th>
+      <th class="num">Value requested</th><th class="num">Disbursed</th></tr></thead>
+    <tbody>
+      {% for p in products %}
+      <tr>
+        <td data-label="Product"><a href="{% url 'product-list' p.code %}">{{ p.label }}</a></td>
+        <td data-label="Applications" class="num">{{ p.count|intcomma }}</td>
+        <td data-label="Value" class="num">{{ p.value|floatformat:2|intcomma }}</td>
+        <td data-label="Disbursed" class="num">{{ p.disbursed|intcomma }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Applications per month</h2>
+<div class="card" style="padding:14px">
+  {% if volume_chart.empty %}
+    <p class="empty">No applications in this period.</p>
+  {% else %}
+  <div class="chartwrap"><svg viewBox="0 0 {{ volume_chart.width }} {{ volume_chart.height }}"
+       width="100%" height="{{ volume_chart.height }}" role="img"
+       aria-label="Applications per month">
+    {% for a in volume_chart.axis %}
+      <line x1="{{ a.x1 }}" y1="{{ a.y }}" x2="{{ a.x2 }}" y2="{{ a.y }}"
+            stroke="var(--line)" stroke-width="1" />
+      <text x="{{ a.label_x }}" y="{{ a.y }}" text-anchor="end" dominant-baseline="middle"
+            font-size="10.5" fill="var(--faint)">{{ a.label }}</text>
+    {% endfor %}
+    {% for b in volume_chart.bars %}
+      <rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.width }}" height="{{ b.height }}"
+            rx="3" fill="var(--brand)"><title>{{ b.label }}: {{ b.value }}</title></rect>
+      <text x="{{ b.label_x }}" y="{{ b.value_y }}" text-anchor="middle"
+            font-size="10.5" fill="var(--muted)">{{ b.value }}</text>
+      <text x="{{ b.label_x }}" y="{{ volume_chart.label_y }}" text-anchor="middle"
+            font-size="10.5" fill="var(--faint)">{{ b.label }}</text>
+    {% endfor %}
+  </svg></div>
+  {% endif %}
+</div>
+
+<h2>Values requested per month</h2>
+<div class="card" style="padding:14px">
+  {% if value_chart.empty %}
+    <p class="empty">No applications in this period.</p>
+  {% else %}
+  <div class="chartwrap"><svg viewBox="0 0 {{ value_chart.width }} {{ value_chart.height }}"
+       width="100%" height="{{ value_chart.height }}" role="img"
+       aria-label="Value requested per month">
+    {% for a in value_chart.axis %}
+      <line x1="{{ a.x1 }}" y1="{{ a.y }}" x2="{{ a.x2 }}" y2="{{ a.y }}"
+            stroke="var(--line)" stroke-width="1" />
+      <text x="{{ a.label_x }}" y="{{ a.y }}" text-anchor="end" dominant-baseline="middle"
+            font-size="10.5" fill="var(--faint)">{{ a.label }}</text>
+    {% endfor %}
+    {% for b in value_chart.bars %}
+      <rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.width }}" height="{{ b.height }}"
+            rx="3" fill="#8A5CA0"><title>{{ b.label }}</title></rect>
+      <text x="{{ b.label_x }}" y="{{ value_chart.label_y }}" text-anchor="middle"
+            font-size="10.5" fill="var(--faint)">{{ b.label }}</text>
+    {% endfor %}
+  </svg></div>
+  {% endif %}
+</div>
+
+<h2>Turnaround</h2>
+<div class="tiles" style="margin-bottom:12px">
+  {% for stage in turnaround.stages %}
+    <div class="tile">
+      <div class="k">To {{ stage.label }}</div>
+      <div class="v">{% if stage.median_days is not None %}{{ stage.median_days }}<span
+        style="font-size:14px;font-weight:600;color:var(--muted)"> days</span>{% else %}&mdash;{% endif %}</div>
+      <div class="muted" style="font-size:11.5px">{{ stage.reached|intcomma }} reached this stage</div>
+    </div>
+  {% endfor %}
+</div>
+<div class="card" style="padding:15px">
+  <strong>{{ turnaround.open_count|intcomma }}</strong> applications are still open.
+  {% if turnaround.open_median_age %}
+    Median age <strong>{{ turnaround.open_median_age }} days</strong>,
+    oldest <strong>{{ turnaround.open_oldest }} days</strong>.
+  {% endif %}
+  <div class="muted" style="font-size:12.5px;margin-top:6px">
+    Medians count only applications that actually reached each stage. Including
+    those still waiting would pull every figure toward zero and make a slow
+    pipeline look fast.
+  </div>
+</div>
+
+<h2>Officer performance &mdash; disbursed value</h2>
+<div class="card" style="padding:14px 14px 6px">
+  {% if officer_chart.empty %}
+    <p class="empty">Nothing disbursed in this period.</p>
+  {% else %}
+  <div class="chartwrap"><svg viewBox="0 0 {{ officer_chart.width }} {{ officer_chart.height }}"
+       width="100%" height="{{ officer_chart.height }}" role="img"
+       aria-label="Disbursed value by account officer">
+    {% for r in officer_chart.rows %}
+      {% if r.stripe %}
+      <rect x="0" y="{{ r.y }}" width="{{ officer_chart.width }}"
+            height="{{ officer_chart.row_height }}" fill="#FAFAFC" />
+      {% endif %}
+      <text x="0" y="{{ r.text_y }}" font-size="12" fill="var(--ink)">{{ r.label|truncatechars:30 }}</text>
+      <rect x="{{ officer_chart.track_x }}" y="{{ r.bar_y }}" width="{{ r.width }}"
+            height="{{ r.height }}" rx="3" fill="var(--brand)"><title>{{ r.note }}</title></rect>
+      <text x="{{ officer_chart.value_x }}" y="{{ r.text_y }}" font-size="11.5"
+            fill="var(--muted)">{{ r.display }}</text>
+    {% endfor %}
+  </svg></div>
+  {% endif %}
+</div>
+<div class="card scroll" style="margin-top:12px">
+  <table class="stack">
+    <thead><tr><th>Officer</th><th class="num">Loans</th><th class="num">Disbursed</th><th>Spellings</th></tr></thead>
+    <tbody>
+      {% for o in officers %}
+      <tr>
+        <td data-label="Officer">{{ o.label }}</td>
+        <td data-label="Loans" class="num">{{ o.count|intcomma }}</td>
+        <td data-label="Disbursed" class="num">{{ o.value|floatformat:2|intcomma }}</td>
+        <td data-label="Spellings">
+          {% if o.variants > 1 %}<span class="pill CORRECTION_REQUESTED">{{ o.variants }} merged</span>
+          {% else %}<span class="muted">1</span>{% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="4" class="empty">Nothing disbursed.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="muted" style="font-size:12.5px;margin-top:8px">
+  Names are merged by <code>loans/officers.py</code>. A "merged" badge means
+  several spellings were combined. Officers still shown separately who are the
+  same person belong in <code>ALIASES</code> &mdash; run
+  <code>manage.py list_officers</code> to review.
+</p>
+
+<h2>Loan size distribution</h2>
+<div class="card" style="padding:14px 14px 6px">
+  <div class="chartwrap"><svg viewBox="0 0 {{ band_chart.width }} {{ band_chart.height }}"
+       width="100%" height="{{ band_chart.height }}" role="img" aria-label="Loan size distribution">
+    {% for r in band_chart.rows %}
+      {% if r.stripe %}<rect x="0" y="{{ r.y }}" width="{{ band_chart.width }}"
+            height="{{ band_chart.row_height }}" fill="#FAFAFC" />{% endif %}
+      <text x="0" y="{{ r.text_y }}" font-size="12" fill="var(--ink)">{{ r.label }}</text>
+      <rect x="{{ band_chart.track_x }}" y="{{ r.bar_y }}" width="{{ r.width }}"
+            height="{{ r.height }}" rx="3" fill="#8A5CA0" />
+      <text x="{{ band_chart.value_x }}" y="{{ r.text_y }}" font-size="11.5"
+            fill="var(--muted)">{{ r.value|intcomma }}</text>
+    {% endfor %}
+  </svg></div>
+</div>
+
+<h2>Top states</h2>
+<div class="card" style="padding:14px 14px 6px">
+  <div class="chartwrap"><svg viewBox="0 0 {{ state_chart.width }} {{ state_chart.height }}"
+       width="100%" height="{{ state_chart.height }}" role="img" aria-label="Applications by state">
+    {% for r in state_chart.rows %}
+      {% if r.stripe %}<rect x="0" y="{{ r.y }}" width="{{ state_chart.width }}"
+            height="{{ state_chart.row_height }}" fill="#FAFAFC" />{% endif %}
+      <text x="0" y="{{ r.text_y }}" font-size="12" fill="var(--ink)">{{ r.label|truncatechars:22 }}</text>
+      <rect x="{{ state_chart.track_x }}" y="{{ r.bar_y }}" width="{{ r.width }}"
+            height="{{ r.height }}" rx="3" fill="#C2A3D4" />
+      <text x="{{ state_chart.value_x }}" y="{{ r.text_y }}" font-size="11.5"
+            fill="var(--muted)">{{ r.value|intcomma }}</text>
+    {% endfor %}
+  </svg></div>
+</div>
+{% endblock %}

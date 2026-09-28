@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block title %}Account locked{% endblock %}
+{% block content %}
+<h1>Too many failed sign-in attempts</h1>
+<p class="sub">This account is locked for 30 minutes. The lock applies to this
+username from this address only.</p>
+<p class="muted">If this was not you, tell whoever administers this application
+&mdash; the attempt has been recorded in the audit log.</p>
+{% endblock %}

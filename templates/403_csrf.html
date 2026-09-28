@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block title %}Session expired{% endblock %}
+{% block content %}<h1>Your session expired</h1>
+<p class="sub">Sessions end after eight hours, and when the browser closes.
+Sign in again and repeat what you were doing.</p>
+<p><a href="{% url 'login' %}">Sign in</a></p>{% endblock %}

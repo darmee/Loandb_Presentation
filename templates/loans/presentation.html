@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Reporting Dashboard{% endblock %}
+
+{% block content %}
+
+<style>
+    body { overflow: hidden !important; }
+    .bar, .subnav { display: none !important; }
+    .wrap { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+
+    .presentation-shell {
+        position: fixed;
+        inset: 0 0 0 0;
+        background: #f6f6f9;
+        z-index: 10;
+        overflow: hidden;
+    }
+
+    .presentation-frame {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        display: block;
+        background: #f6f6f9;
+    }
+
+    .presentation-overlay {
+        position: fixed;
+        left: 50%;
+        bottom: 18px;
+        transform: translateX(-50%) translateY(12px);
+        z-index: 50;
+
+        display: flex;
+        align-items: center;
+        gap: 8px;
+
+        padding: 7px 10px;
+
+        background: rgba(27, 27, 31, 0.88);
+        border-radius: 999px;
+
+        box-shadow:
+            0 8px 30px rgba(0,0,0,.18);
+
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .18s ease, transform .18s ease;
+    }
+
+    .presentation-overlay.is-visible {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateX(-50%) translateY(0);
+    }
+
+    .presentation-overlay button {
+        width: 34px;
+        height: 34px;
+
+        border: 0;
+        border-radius: 50%;
+
+        background: transparent;
+        color: white;
+
+        font-size: 17px;
+
+        cursor: pointer;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .presentation-overlay button:hover {
+        background: rgba(255,255,255,.14);
+    }
+
+    .presentation-counter {
+        min-width: 65px;
+        text-align: center;
+
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+
+    @media (max-width: 700px) {
+        .presentation-overlay {
+            bottom: 10px;
+        }
+    }
+
+    /* Shown the moment a slide starts loading a fresh page from the
+       database, hidden again once that page has finished loading - so a
+       page swap never reads as a frozen screen. A slim bar at the very top
+       edge, above every slide's own padding, so it never lands on top of a
+       title, a card or the per-page "Live" badge the way a corner pill
+       would on a full-bleed slide. */
+    .presentation-loading {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        z-index: 60;
+        overflow: hidden;
+
+        opacity: 0;
+        transition: opacity .15s ease;
+        pointer-events: none;
+    }
+
+    .presentation-loading.is-visible {
+        opacity: 1;
+    }
+
+    .presentation-loading::after {
+        content: "";
+        position: absolute;
+        top: 0; bottom: 0;
+        width: 40%;
+        background: linear-gradient(90deg, transparent, #7B3FA0 15%, #3B1D63 50%, #7B3FA0 85%, transparent);
+        animation: presentation-loading-sweep 1s ease-in-out infinite;
+    }
+
+    @keyframes presentation-loading-sweep {
+        0%   { left: -40%; }
+        100% { left: 100%; }
+    }
+</style>
+
+
+<div class="presentation-shell">
+
+    <iframe
+        id="presentationFrame"
+        class="presentation-frame"
+        title="Reporting Dashboard Presentation"
+        src="{{ slides.0.url }}">
+    </iframe>
+
+</div>
+
+<div id="presentationLoading" class="presentation-loading" role="status" aria-label="Loading"></div>
+
+
+<div class="presentation-overlay">
+
+    <button
+        type="button"
+        id="previousBtn"
+        title="Previous"
+        aria-label="Previous slide">◀</button>
+
+    <span
+        id="slideIndicator"
+        class="presentation-counter">
+        1 / {{ slides|length }}
+    </span>
+
+    <button
+        type="button"
+        id="nextBtn"
+        title="Next"
+        aria-label="Next slide">▶</button>
+
+    <button
+        type="button"
+        id="pauseBtn"
+        title="Pause"
+        aria-label="Pause presentation">❚❚</button>
+
+</div>
+
+
+<script>
+    window.PRESENTATION_SLIDES = [
+        {% for slide in slides %}
+        {
+            url: "{{ slide.url|escapejs }}",
+            title: "{{ slide.title|escapejs }}"
+        }{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ];
+</script>
+
+<script src="{% static 'js/presentation.js' %}"></script>
+
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}Sign in{% endblock %}
+{% block content %}
+<div style="max-width:380px;margin:6vh auto">
+  <div class="card" style="padding:26px">
+    <h1 style="margin-bottom:2px">Sign in</h1>
+    <p class="sub">DashMFB Loan Reports</p>
+    {% if form.errors %}
+      <div class="banner" style="background:#FBE3E1;border-color:#E0A6A1;color:#8C1D18">
+        That username and password did not match. Five failed attempts lock the account for 30 minutes.
+      </div>
+    {% endif %}
+    <form method="post">{% csrf_token %}
+      <p><label for="id_username">Username</label><br>
+         <input id="id_username" name="username" autocomplete="username" autofocus required
+                style="width:100%;padding:9px;border:1px solid var(--line);border-radius:7px;font:inherit"></p>
+      <p><label for="id_password">Password</label><br>
+         <input id="id_password" name="password" type="password" autocomplete="current-password" required
+                style="width:100%;padding:9px;border:1px solid var(--line);border-radius:7px;font:inherit"></p>
+      <input type="hidden" name="next" value="{{ next }}">
+      <button type="submit" style="width:100%;padding:10px;background:var(--brand);color:#fff;
+              border:0;border-radius:7px;font:inherit;font-weight:600;cursor:pointer">Sign in</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

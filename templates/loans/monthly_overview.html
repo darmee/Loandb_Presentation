@@ -1,0 +1,182 @@
+{% extends "base.html" %}{% load humanize %}
+{% block title %}Monthly Overview{% endblock %}
+{% block content %}
+
+{# ---- shared by the normal page and the presentation slide ------------------ #}
+<style>
+  .mo-head .tiles { margin: 8px 0 0; }
+
+  /* Two wide charts across the top (twelve months need the width to be readable),
+     three narrower ones underneath. */
+  .mo-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+  .mo-card {
+    background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,245,252,.96));
+    border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 10px 16px 12px; position: relative; overflow: hidden;
+    display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  }
+  .mo-card::before {
+    content: ""; position: absolute; left: 0; top: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--brand), #8A5CA0);
+  }
+  .mo-card h3 { margin: 4px 0 8px; font-size: 14px; font-weight: 650; color: var(--ink); flex: 0 0 auto; }
+  .mo-wide { grid-column: span 6; }
+  .mo-third { grid-column: span 4; }
+
+  /* Charts are SVGs that fill their box exactly. On the normal page the box takes
+     the drawing's own shape (--ar); in the presentation it takes whatever the
+     card has left. */
+  .mo-card .chartwrap { position: relative; flex: 1 1 auto; min-height: 0; aspect-ratio: var(--ar); overflow: visible; }
+  .mo-card .chartwrap > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .mo-card .empty { margin: auto; }
+  .chartwrap rect { transition: opacity .15s ease; }
+  .chartwrap rect:hover { opacity: .88; }
+  .chartwrap text { pointer-events: none; }
+
+  @media (max-width: 980px) { .mo-wide, .mo-third { grid-column: 1 / -1; } }
+</style>
+
+{% if presentation %}
+{# ---- presentation slide: one screen, starts at the very top, nothing scrolls ---- #}
+<style>
+  html, body { height: 100%; }
+  body { overflow: hidden !important; }
+  .bar, .subnav, footer { display: none !important; }
+  .banner { margin: 0; padding: 4px 10px; font-size: 12px; flex: 0 0 auto; }
+  .wrap {
+    max-width: none !important; margin: 0 !important;
+    padding: 10px 14px 12px !important;
+    height: 100vh; box-sizing: border-box; overflow: hidden;
+    background: #f6f6f9;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .chips { display: none !important; }
+
+  .mo-head { flex: 0 0 auto; display: flex; align-items: center; gap: 16px; }
+  .mo-title h1 { margin: 0; font-size: clamp(18px, 2.7vh, 26px); line-height: 1.15; white-space: nowrap; }
+  .mo-title .sub { margin: 2px 0 0; font-size: clamp(11px, 1.45vh, 14px); white-space: nowrap; }
+  .mo-live {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
+    background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .6px;
+    padding: 5px 11px; border-radius: 999px; text-transform: uppercase;
+  }
+  .mo-live i { width: 7px; height: 7px; border-radius: 50%; background: #4ADE80; animation: mo-pulse 1.8s infinite; }
+  @keyframes mo-pulse { 0% { box-shadow: 0 0 0 0 rgba(74,222,128,.7); } 70% { box-shadow: 0 0 0 7px rgba(74,222,128,0); } 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0); } }
+
+  /* Top row gets a little more height than the bottom row: it holds the two
+     charts that have to stay readable. */
+  .mo-grid { flex: 1 1 auto; min-height: 0; margin-top: 0; gap: 10px; grid-template-rows: minmax(0, 1.2fr) minmax(0, 1fr); }
+  .mo-card { padding: 6px 14px 10px; }
+  .mo-card h3 { margin: 3px 0 4px; font-size: clamp(12px, 1.8vh, 17px); }
+  .mo-card .chartwrap { aspect-ratio: auto; }
+</style>
+{% endif %}
+
+<div class="mo-head">
+  <div class="mo-title">
+    <h1>Monthly Overview</h1>
+    <p class="sub">{{ total_applications|intcomma }} application{{ total_applications|pluralize }} in the last {{ months }} months &middot; &#8358;{{ total_value_compact }} requested</p>
+  </div>
+
+  {% if not presentation %}
+  <div class="chips" style="margin-top:10px">
+    {% for range in month_ranges %}
+      <a class="chip" href="?months={{ range }}" style="{% if range == months %}background:var(--brand);color:#fff;border-color:var(--brand){% endif %}">Last {{ range }} months</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if presentation %}<span class="mo-live"><i></i> Live</span>{% endif %}
+</div>
+
+<div class="mo-grid">
+
+  <div class="mo-card mo-wide">
+    <h3>Applications per month</h3>
+    {% if volume_chart.empty %}<p class="empty">No data.</p>{% else %}
+    <div class="chartwrap" style="--ar: {{ volume_chart.width }} / {{ volume_chart.height }}">
+      <svg viewBox="0 0 {{ volume_chart.width }} {{ volume_chart.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Applications per month">
+        {% for a in volume_chart.axis %}
+          <line x1="{{ a.x1 }}" y1="{{ a.y }}" x2="{{ a.x2 }}" y2="{{ a.y }}" stroke="var(--line)" stroke-width="1" />
+          <text x="{{ a.label_x }}" y="{{ a.y }}" text-anchor="end" dominant-baseline="middle" font-size="12" fill="var(--muted)">{{ a.label }}</text>
+        {% endfor %}
+        {% for b in volume_chart.bars %}
+          <rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.width }}" height="{{ b.height }}" rx="3" fill="{{ b.colour }}"></rect>
+          <text x="{{ b.label_x }}" y="{{ b.value_y }}" text-anchor="middle" font-size="13" font-weight="650" fill="var(--ink)">{{ b.display }}</text>
+          <text x="{{ b.label_x }}" y="{{ volume_chart.label_y }}" text-anchor="middle" font-size="12.5" fill="var(--muted)">{{ b.label }}</text>
+        {% endfor %}
+      </svg>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="mo-card mo-wide">
+    <h3>Values requested per month (&#8358;)</h3>
+    {% if value_chart.empty %}<p class="empty">No data.</p>{% else %}
+    <div class="chartwrap" style="--ar: {{ value_chart.width }} / {{ value_chart.height }}">
+      <svg viewBox="0 0 {{ value_chart.width }} {{ value_chart.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Value requested per month">
+        {% for a in value_chart.axis %}
+          <line x1="{{ a.x1 }}" y1="{{ a.y }}" x2="{{ a.x2 }}" y2="{{ a.y }}" stroke="var(--line)" stroke-width="1" />
+          <text x="{{ a.label_x }}" y="{{ a.y }}" text-anchor="end" dominant-baseline="middle" font-size="12" fill="var(--muted)">{{ a.label }}</text>
+        {% endfor %}
+        {% for b in value_chart.bars %}
+          <rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.width }}" height="{{ b.height }}" rx="3" fill="{{ b.colour }}"></rect>
+          <text x="{{ b.label_x }}" y="{{ b.value_y }}" text-anchor="middle" font-size="12.5" font-weight="650" fill="var(--ink)">{{ b.display }}</text>
+          <text x="{{ b.label_x }}" y="{{ value_chart.label_y }}" text-anchor="middle" font-size="12.5" fill="var(--muted)">{{ b.label }}</text>
+        {% endfor %}
+      </svg>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="mo-card mo-third">
+    <h3>Loan size distribution</h3>
+    {% if band_chart.empty %}<p class="empty">No data.</p>{% else %}
+    <div class="chartwrap" style="--ar: {{ band_chart.width }} / {{ band_chart.height }}">
+      <svg viewBox="0 0 {{ band_chart.width }} {{ band_chart.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Loan size distribution">
+        {% for r in band_chart.rows %}
+          {% if r.stripe %}<rect x="0" y="{{ r.y }}" width="{{ band_chart.width }}" height="{{ band_chart.row_height }}" fill="#FAFAFC" />{% endif %}
+          <text x="0" y="{{ r.text_y }}" font-size="14" fill="var(--ink)">{{ r.label }}</text>
+          <rect x="{{ band_chart.track_x }}" y="{{ r.bar_y }}" width="{{ r.width }}" height="{{ r.height }}" rx="3" fill="{{ r.colour }}"></rect>
+          <text x="{{ band_chart.value_x }}" y="{{ r.text_y }}" font-size="14" font-weight="650" fill="var(--ink)">{{ r.value|intcomma }}</text>
+        {% endfor %}
+      </svg>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="mo-card mo-third">
+    <h3>Top states</h3>
+    {% if state_chart.empty %}<p class="empty">No data.</p>{% else %}
+    <div class="chartwrap" style="--ar: {{ state_chart.width }} / {{ state_chart.height }}">
+      <svg viewBox="0 0 {{ state_chart.width }} {{ state_chart.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Applications by state">
+        {% for r in state_chart.rows %}
+          {% if r.stripe %}<rect x="0" y="{{ r.y }}" width="{{ state_chart.width }}" height="{{ state_chart.row_height }}" fill="#FAFAFC" />{% endif %}
+          <text x="0" y="{{ r.text_y }}" font-size="14" fill="var(--ink)">{{ r.label|truncatechars:20 }}</text>
+          <rect x="{{ state_chart.track_x }}" y="{{ r.bar_y }}" width="{{ r.width }}" height="{{ r.height }}" rx="3" fill="{{ r.colour }}"></rect>
+          <text x="{{ state_chart.value_x }}" y="{{ r.text_y }}" font-size="14" font-weight="650" fill="var(--ink)">{{ r.value|intcomma }}</text>
+        {% endfor %}
+      </svg>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="mo-card mo-third">
+    <h3>Officer performance &mdash; disbursed value</h3>
+    {% if officer_chart.empty %}<p class="empty">Nothing disbursed in this period.</p>{% else %}
+    <div class="chartwrap" style="--ar: {{ officer_chart.width }} / {{ officer_chart.height }}">
+      <svg viewBox="0 0 {{ officer_chart.width }} {{ officer_chart.height }}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Disbursed value by account officer">
+        {% for r in officer_chart.rows %}
+          {% if r.stripe %}<rect x="0" y="{{ r.y }}" width="{{ officer_chart.width }}" height="{{ officer_chart.row_height }}" fill="#FAFAFC" />{% endif %}
+          <text x="0" y="{{ r.text_y }}" font-size="14" fill="var(--ink)">{{ r.label|truncatechars:24 }}</text>
+          <rect x="{{ officer_chart.track_x }}" y="{{ r.bar_y }}" width="{{ r.width }}" height="{{ r.height }}" rx="3" fill="{{ r.colour }}"></rect>
+          <text x="{{ officer_chart.value_x }}" y="{{ r.text_y }}" font-size="14" font-weight="650" fill="var(--ink)">{{ r.display }}</text>
+        {% endfor %}
+      </svg>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+{% endblock %}

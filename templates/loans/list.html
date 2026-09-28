@@ -1,0 +1,135 @@
+{% extends "base.html" %}{% load humanize loan_extras %}
+{% block title %}{{ product_label }}{% endblock %}
+{% block content %}
+
+<h1>{{ product_label }}</h1>
+<p class="sub">
+  {% if summary.total %}
+    Showing {{ range_start|intcomma }}&ndash;{{ range_end|intcomma }} of {{ summary.total|intcomma }} application{{ summary.total|pluralize }}
+  {% else %}
+    No applications match these filters
+  {% endif %}
+</p>
+
+<div class="tiles" style="margin-bottom:16px">
+  <div class="tile"><div class="k">Applications</div><div class="v">{{ summary.total|intcomma }}</div></div>
+  <div class="tile"><div class="k">Total value</div><div class="v">&#8358;{{ value_compact }}</div></div>
+  <div class="tile"><div class="k">Open</div><div class="v">{{ summary.open|intcomma }}</div></div>
+  <div class="tile"><div class="k">Disbursed</div><div class="v" style="color:var(--ok)">{{ summary.disbursed|intcomma }}</div></div>
+  <div class="tile"><div class="k">Rejected</div><div class="v" style="color:var(--bad)">{{ summary.rejected|intcomma }}</div></div>
+</div>
+
+<form method="get">
+  <div class="card" style="padding:15px 16px;margin-bottom:13px">
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+      {% if search_field %}
+        <div class="field" style="flex:1 1 280px">
+          <label for="{{ search_field.id_for_label }}">{{ search_field.label }}</label>
+          {{ search_field }}
+        </div>
+      {% endif %}
+      {% for field in primary_filters %}
+        <div class="field" style="flex:0 1 190px">
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+        </div>
+      {% endfor %}
+    </div>
+
+    {% if more_filters %}
+    <details class="filters" style="margin:11px -16px -15px;border-top:1px solid var(--line)">
+      <summary>More filters
+        {% if applied_filter_count %}<span class="count">{{ applied_filter_count }}</span>{% endif %}
+      </summary>
+      <div class="body">
+        <div class="grid">
+          {% for field in more_filters %}
+            <div class="field">
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    </details>
+    {% endif %}
+
+    <div class="actions" style="border-top:1px solid var(--line);margin:14px -16px -15px;padding:13px 16px 0">
+      <button type="submit" class="btn btn-primary">Apply filters</button>
+      {% if applied_filter_count %}<a href="?" class="btn btn-secondary">Clear all</a>{% endif %}
+      <span style="margin-left:auto"></span>
+      {% if unified %}
+        <span class="muted" style="font-size:12.5px">Open a product tab to export</span>
+      {% else %}
+        <a class="btn btn-secondary"
+           href="{% url 'export-xlsx' product %}{% if filter_query %}?{{ filter_query }}{% endif %}">
+          Download Excel{% if applied_filter_count %} ({{ summary.total|intcomma }} rows){% endif %}</a>
+      {% endif %}
+    </div>
+  </div>
+</form>
+
+{% if active_filters %}
+<div class="chips">
+  {% for chip in active_filters %}
+    <a href="?{{ chip.remove_url }}" class="chip">{{ chip.label }}: <b>{{ chip.value }}</b> &times;</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card scroll">
+  <table class="stack">
+    <thead>
+      <tr>
+        {% if unified %}<th>Product</th>{% endif %}
+        {% for name, label in list_columns %}
+          <th {% if name == 'loan_amount' %}class="num"{% endif %}>
+            {% if name in sortable %}
+              {% with link=sort_links|dictkey:name %}
+                <a href="?{{ link.url }}">{{ label }}{% if link.direction == 'asc' %} &uarr;{% elif link.direction == 'desc' %} &darr;{% endif %}</a>
+              {% endwith %}
+            {% else %}{{ label }}{% endif %}
+          </th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in requests %}
+      <tr>
+        {% if unified %}<td data-label="Product" class="muted">{{ row.product_label }}</td>{% endif %}
+        <td data-label="Created" style="white-space:nowrap">{{ row.created_at|date:"Y-m-d H:i" }}</td>
+        <td data-label="Reference"><a class="ref" href="{% url 'loan-detail' row.product_code row.id %}">{{ row.reference_no }}</a></td>
+        <td data-label="Applicant">{{ row.full_name }}</td>
+        <td data-label="Amount" class="num">{% if row.loan_amount %}{{ row.loan_amount|floatformat:2|intcomma }}{% else %}<span class="muted">&mdash;</span>{% endif %}</td>
+        <td data-label="Status"><span class="pill {{ row.status }}">{{ row.status_display }}</span></td>
+        <td data-label="Officer">{{ row.account_officer|default:"&mdash;" }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="8" class="empty">
+        No applications match these filters.
+        {% if applied_filter_count %}<br><a href="?">Clear all filters</a>{% endif %}
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="pager">
+  {% if is_paginated %}
+    {% if page_obj.has_previous %}
+      <a href="?page={{ page_obj.previous_page_number }}{% if filter_query %}&{{ filter_query }}{% endif %}">&larr; Previous</a>
+    {% endif %}
+    <span class="muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+    {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}{% if filter_query %}&{{ filter_query }}{% endif %}">Next &rarr;</a>
+    {% endif %}
+  {% endif %}
+  <div style="margin-left:auto" class="muted">
+    Rows per page:
+    {% for size in page_sizes %}
+      {% if size == per_page %}<strong style="color:var(--brand)">{{ size }}</strong>
+      {% else %}<a href="?{{ page_size_links|dictkey:size }}" style="border:0;padding:2px 4px">{{ size }}</a>{% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
