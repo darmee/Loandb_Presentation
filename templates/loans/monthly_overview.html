@@ -69,6 +69,25 @@
   .mo-card { padding: 6px 14px 10px; }
   .mo-card h3 { margin: 3px 0 4px; font-size: clamp(12px, 1.8vh, 17px); }
   .mo-card .chartwrap { aspect-ratio: auto; }
+
+  /* Same reasoning as the Analytics panel's mobile fallback: five cards on
+     a 12-column grid can't be shrunk to phone width and stay readable, so
+     below this it becomes an ordinary scrolling page instead of clipping
+     content. The deck's timer keeps advancing regardless. */
+  @media (max-width: 700px) {
+    html, body { height: auto; }
+    body { overflow: visible !important; }
+    .wrap { height: auto; min-height: 100vh; overflow: visible; padding: 12px !important; }
+    .mo-head { flex-wrap: wrap; row-gap: 8px; }
+    .mo-title h1 { white-space: normal; }
+    .mo-title .sub { white-space: normal; }
+    .mo-live { margin-left: 0; }
+    .mo-grid { grid-template-columns: 1fr; grid-template-rows: none; }
+    .mo-wide, .mo-third { grid-column: 1 / -1; }
+    .mo-card { min-height: 240px; }
+    .mo-card .chartwrap { aspect-ratio: none; height: 210px; }
+    .mo-card .chartwrap > svg { min-width: 0; }
+  }
 </style>
 {% endif %}
 

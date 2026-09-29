@@ -116,6 +116,48 @@
   .ap-card svg.pie { height: 100%; width: auto; max-width: 52%; }
   .ap-legend { font-size: clamp(12px, 1.75vh, 18px); gap: clamp(3px, .9vh, 10px); }
   .ap-legend .swatch { width: 1em; height: 1em; }
+
+  /* Below this, "one screen, nothing scrolls" stops being achievable at any
+     readable size - six cards' worth of charts and an 8-column KPI/title
+     row don't fit a phone regardless of font size. Rather than keep
+     shrinking text past legibility (or clipping content outright, which is
+     what happened before this rule existed), a narrow screen gets the
+     slide as an ordinary scrolling page: real card sizes, real text sizes,
+     scroll to see the rest. The deck's own 5-second timer keeps advancing
+     underneath this exactly as it does at any other width. */
+  @media (max-width: 700px) {
+    html, body { height: auto; }
+    body { overflow: visible !important; }
+    .wrap { height: auto; min-height: 100vh; overflow: visible; padding: 12px !important; }
+    .ap-head { flex-wrap: wrap; row-gap: 8px; }
+    .ap-title h1 { white-space: normal; }
+    .ap-title .sub { white-space: normal; }
+    .ap-head .tiles { flex: 1 1 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); order: 3; }
+    .ap-live { order: 2; margin-left: auto; }
+    .ap-grid, .ap-grid.ap-grid--six { grid-template-columns: 1fr; grid-template-rows: none; }
+    .ap-grid.ap-grid--six > .ap-card { grid-column: auto; }
+    .ap-card { min-height: 260px; }
+    /* Not aspect-ratio here: combined with the SVG's absolute positioning,
+       that produces an SVG width far wider than its own card in this
+       browser, pushing the value numbers off the right edge where the
+       card's own overflow:hidden then hides them. A fixed height sidesteps
+       it - width:100%/height:100% on the SVG then has nothing to resolve
+       but its own container's box, full stop. */
+    .ap-card .chartwrap { aspect-ratio: none; height: 230px; }
+    /* base.html forces charts to a 620px min-width with horizontal scroll
+       on narrow screens - the right move for the ordinary pages, but this
+       card is already sized for mobile (see PANEL_*_THIRD in views.py) and
+       its own overflow:visible turns that min-width into clipped content
+       instead of a scrollbar. Cancelled here, presentation mode only. */
+    .ap-card .chartwrap > svg { min-width: 0; }
+    /* Side-by-side pie+legend needs real width for names like "In progress" -
+       a single mobile column doesn't have it, so the pie moves above a
+       full-width legend instead of squeezing both into half the card. */
+    .ap-card .body { flex-direction: column; }
+    .ap-card svg.pie { width: min(70%, 220px); height: auto; max-width: 70%; margin: 0 auto; }
+    .ap-legend { font-size: 14px; width: 100%; }
+    .ap-legend .name { overflow: visible; text-overflow: initial; white-space: normal; }
+  }
 </style>
 {% endif %}
 
