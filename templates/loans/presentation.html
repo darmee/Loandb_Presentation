@@ -1,194 +1,266 @@
-{% extends "base.html" %}
-{% load static %}
+{% extends "base.html" %}{% load static %}
+{% block title %}Loan Dashboard{% endblock %}
+{% block body_class %}page deck{% endblock %}
+{% block head %}
+<script src="{% static 'vendor/echarts/echarts.min.js' %}?v={{ asset_version }}" defer></script>
+<script src="{% static 'js/presentation.js' %}?v={{ asset_version }}" defer></script>
+{% endblock %}
+{% block body %}
+{{ config|json_script:"app-config" }}
+<div class="loading-bar" id="loading" role="status" aria-label="Loading"></div>
+<div class="app">
+  <header class="appbar" id="appbar">
+    <a class="brand" href="/">
+      <span class="plate"><img src="{% static 'img/logo.png' %}" alt="DashMFB"></span>
+      <span class="brand-name">Loan Dashboard</span>
+    </a>
+    <div class="filters" role="group" aria-label="Period">
+      <div class="seg" id="presets" role="group" aria-label="Period">
+        <button type="button" data-preset="all">All time</button>
+        <button type="button" data-preset="365">12 months</button>
+        <button type="button" data-preset="90">90 days</button>
+        <button type="button" data-preset="30">30 days</button>
+        <button type="button" data-preset="mtd">This month</button>
+      </div>
+      <span class="range-inputs">
+        <input class="input" type="date" id="start" aria-label="From">
+        <span class="muted">to</span>
+        <input class="input" type="date" id="end" aria-label="To">
+      </span>
+    </div>
+    <div class="appbar-right">
+      {% if sample %}<span class="sample-pill" title="Showing fabricated sample data, not the live loan database">Sample data</span>{% endif %}
+      <span class="live-pill"><i></i>Live</span>
+      <button type="button" class="icon-btn" id="play" aria-pressed="false" title="Auto-play pages" aria-label="Auto-play pages">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M7 4v16l13-8z"/></svg>
+      </button>
+      <button type="button" class="icon-btn" data-theme-toggle title="Switch light/dark" aria-label="Switch between light and dark mode">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+      </button>
+      <span class="who">{{ user.get_username }}</span>
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn btn-ghost">Sign out</button></form>
+    </div>
+  </header>
 
-{% block title %}Reporting Dashboard{% endblock %}
+  <nav class="tabs" role="tablist" aria-label="Pages">
+    <button class="tab" role="tab" data-tab="overview">Overview</button>
+    <button class="tab" role="tab" data-tab="monthly">Monthly overview</button>
+    {% for p in config.products %}<button class="tab" role="tab" data-tab="product-{{ p.code }}">{{ p.label }}</button>{% endfor %}
+    <button class="tab" role="tab" data-tab="daily">Daily activity</button>
+    <button class="tab" role="tab" data-tab="flow">Applications vs disbursements</button>
+    <button class="tab" role="tab" data-tab="compare">Compare periods</button>
+    <button class="tab" role="tab" data-tab="insights">Top insights</button>
+  </nav>
 
-{% block content %}
+  <main class="content">
+    <div id="error" class="error-box" hidden></div>
+    <div id="notice" class="banner notice" hidden></div>
+    <div id="boot-warning" class="error-box">
+      The dashboard's script has not started. Hard-refresh the page (Ctrl+F5). If this message stays,
+      open the browser console (F12) and check that <code>/static/js/presentation.js</code> and
+      <code>/static/vendor/echarts/echarts.min.js</code> load; on a production server, run
+      <code>manage.py collectstatic</code> after updating.
+    </div>
 
-<style>
-    body { overflow: hidden !important; }
-    .bar, .subnav { display: none !important; }
-    .wrap { max-width: none !important; padding: 0 !important; margin: 0 !important; }
+    <!-- OVERVIEW: all requests. Four charts: two on top, two below. -->
+    <section class="panel" id="panel-overview" role="tabpanel">
+      <div class="deck-head">
+        <div class="deck-title"><h1>All requests</h1><p class="sub" id="overview-sub"></p></div>
+        <div class="tiles" id="tiles-all"></div>
+      </div>
+      <div class="deck-grid g2x2">
+        <div class="card">
+          <div class="card-head"><h3>Request type comparison</h3><span class="hint">Click a slice</span></div>
+          <div class="chart" id="ch-type-pie"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Final outcome</h3>
+            <select class="input why" data-scope="all" aria-label="See the requests behind an outcome"><option value="">See why…</option></select>
+          </div>
+          <div class="chart" id="ch-outcome-all"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Loan volume by product</h3><span class="hint">Hover for the ranking</span></div>
+          <div class="chart" id="ch-volume-product"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Applications per month</h3><span class="hint">Click a month</span></div>
+          <div class="chart" id="ch-months-all"></div>
+        </div>
+      </div>
+    </section>
 
-    .presentation-shell {
-        position: fixed;
-        inset: 0 0 0 0;
-        background: #f6f6f9;
-        z-index: 10;
-        overflow: hidden;
-    }
+    <!-- MONTHLY OVERVIEW: four charts -->
+    <section class="panel" id="panel-monthly" role="tabpanel">
+      <div class="deck-head">
+        <div class="deck-title"><h1>Monthly overview</h1><p class="sub" id="monthly-sub"></p></div>
+        <div class="tiles tiles-4" id="tiles-monthly"></div>
+      </div>
+      <div class="deck-grid g2x2">
+        <div class="card">
+          <div class="card-head"><h3 id="monthly-title">Applications per month</h3>
+            <div class="seg" id="monthly-mode" role="group" aria-label="Show">
+              <button type="button" data-mode="count" aria-pressed="true">Applications</button>
+              <button type="button" data-mode="value">Value (&#8358;)</button>
+            </div>
+          </div>
+          <div class="chart" id="ch-monthly"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Loan size distribution</h3><span class="hint">Click a bar</span></div>
+          <div class="chart" id="ch-bands-all"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Top states</h3><span class="hint">Click a bar</span></div>
+          <div class="chart" id="ch-states-all"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Officer performance &mdash; disbursed value</h3></div>
+          <div class="chart" id="ch-officers-all"></div>
+        </div>
+      </div>
+    </section>
 
-    .presentation-frame {
-        width: 100%;
-        height: 100%;
-        border: 0;
-        display: block;
-        background: #f6f6f9;
-    }
+    <!-- ONE PAGE PER PRODUCT: four charts each -->
+    {% for p in config.products %}
+    <section class="panel product-panel" id="panel-product-{{ p.code }}" role="tabpanel" data-product="{{ p.code }}">
+      <div class="deck-head">
+        <div class="deck-title"><h1>{{ p.label }}</h1><p class="sub" id="sub-{{ p.code }}"></p></div>
+        <div class="tiles" id="tiles-{{ p.code }}"></div>
+      </div>
+      <div class="deck-grid g2x2">
+        <div class="card">
+          <div class="card-head"><h3>Final outcome</h3>
+            <select class="input why" data-scope="{{ p.code }}" aria-label="See the requests behind an outcome"><option value="">See why…</option></select>
+          </div>
+          <div class="chart" id="ch-outcome-{{ p.code }}"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Applications per month</h3><span class="hint">Click a month</span></div>
+          <div class="chart" id="ch-months-{{ p.code }}"></div>
+        </div>
+        {% if p.code == 'cash-for-car' %}
+        <div class="card">
+          <div class="card-head"><h3 id="dist-title-{{ p.code }}">Loan size distribution</h3>
+            <div class="seg dist-mode" data-product="{{ p.code }}" role="group" aria-label="Show">
+              <button type="button" data-mode="bands" aria-pressed="true">Loan size</button>
+              <button type="button" data-mode="states">Top states</button>
+            </div>
+          </div>
+          <div class="chart" id="ch-dist-{{ p.code }}"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Loan split &mdash; Dash vs Floauto <span class="muted">(disbursed)</span></h3></div>
+          <div class="chart" id="ch-split-pie"></div>
+          <div class="split-foot" id="split-foot"></div>
+        </div>
+        {% else %}
+        <div class="card">
+          <div class="card-head"><h3>Loan size distribution</h3><span class="hint">Click a bar</span></div>
+          <div class="chart" id="ch-bands-{{ p.code }}"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Top states</h3><span class="hint">Click a bar</span></div>
+          <div class="chart" id="ch-states-{{ p.code }}"></div>
+        </div>
+        {% endif %}
+      </div>
+    </section>
+    {% endfor %}
 
-    .presentation-overlay {
-        position: fixed;
-        left: 50%;
-        bottom: 18px;
-        transform: translateX(-50%) translateY(12px);
-        z-index: 50;
+    <!-- DAILY ACTIVITY -->
+    <section class="panel" id="panel-daily" role="tabpanel">
+      <div class="deck-head">
+        <div class="deck-title"><h1>Daily activity</h1><p class="sub">Requests reaching each step, day by day. Click a day for the details.</p></div>
+        <div class="head-controls">
+          <select class="input product-select" aria-label="Product"><option value="all">All products</option>{% for p in config.products %}<option value="{{ p.code }}">{{ p.label }}</option>{% endfor %}</select>
+          <div class="seg" id="daily-mode" role="group" aria-label="Chart style">
+            <button type="button" data-mode="bar" aria-pressed="true">Bars</button>
+            <button type="button" data-mode="line">Lines</button>
+          </div>
+        </div>
+      </div>
+      <div class="deck-grid daily-grid">
+        <div class="card span-all"><div class="chart" id="ch-daily"></div></div>
+        <div class="card">
+          <div class="card-head"><h3>Day by day</h3><span class="hint">Click a row</span></div>
+          <div class="table-scroll"><table class="data" id="daily-table"></table></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Calendar</h3><span class="hint" id="calendar-note">Click a day</span></div>
+          <div class="chart" id="ch-calendar"></div>
+        </div>
+      </div>
+    </section>
 
-        display: flex;
-        align-items: center;
-        gap: 8px;
+    <!-- APPLICATIONS VS DISBURSEMENTS -->
+    <section class="panel" id="panel-flow" role="tabpanel">
+      <div class="deck-head">
+        <div class="deck-title"><h1>Applications vs disbursements</h1><p class="sub" id="flow-sub">What came in against what was paid out.</p></div>
+        <div class="tiles tiles-5" id="flow-tiles"></div>
+        <div class="head-controls">
+          <select class="input product-select" aria-label="Product"><option value="all">All products</option>{% for p in config.products %}<option value="{{ p.code }}">{{ p.label }}</option>{% endfor %}</select>
+        </div>
+      </div>
+      <div class="deck-grid g2x1">
+        <div class="card">
+          <div class="card-head"><h3>Running totals</h3><span class="hint">Click a day</span></div>
+          <div class="chart" id="ch-cumulative"></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Value requested vs value disbursed (&#8358;)</h3></div>
+          <div class="chart" id="ch-value"></div>
+        </div>
+      </div>
+    </section>
 
-        padding: 7px 10px;
+    <!-- COMPARE -->
+    <section class="panel" id="panel-compare" role="tabpanel">
+      <div class="deck-head">
+        <div class="deck-title"><h1>Compare periods</h1><p class="sub">Two date ranges side by side.</p></div>
+        <div class="compare-controls">
+          <div class="period"><span class="period-tag"><i id="tag-a"></i>Period A</span>
+            <span class="range-inputs"><input class="input" type="date" id="a-start" aria-label="Period A from"><span class="muted">to</span><input class="input" type="date" id="a-end" aria-label="Period A to"></span></div>
+          <div class="period"><span class="period-tag"><i id="tag-b"></i>Period B</span>
+            <span class="range-inputs"><input class="input" type="date" id="b-start" aria-label="Period B from"><span class="muted">to</span><input class="input" type="date" id="b-end" aria-label="Period B to"></span></div>
+          <div class="seg" id="compare-presets" role="group" aria-label="Compare with">
+            <button type="button" data-cmp="previous">Previous period</button>
+            <button type="button" data-cmp="month">Month before</button>
+            <button type="button" data-cmp="year">Year before</button>
+          </div>
+        </div>
+      </div>
+      <div class="deck-grid compare-grid">
+        <div class="card card-scroll"><table class="data" id="compare-table"></table></div>
+        <div class="card">
+          <div class="card-head"><h3>Day by day</h3><div class="seg" id="compare-metric" role="group" aria-label="Metric">
+            <button type="button" data-metric="submitted" aria-pressed="true">Submitted</button>
+            <button type="button" data-metric="disbursed">Disbursed</button>
+            <button type="button" data-metric="rejected">Rejected</button>
+          </div></div>
+          <div class="chart" id="ch-compare-daily"></div>
+        </div>
+      </div>
+    </section>
 
-        background: rgba(27, 27, 31, 0.88);
-        border-radius: 999px;
-
-        box-shadow:
-            0 8px 30px rgba(0,0,0,.18);
-
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity .18s ease, transform .18s ease;
-    }
-
-    .presentation-overlay.is-visible {
-        opacity: 1;
-        pointer-events: auto;
-        transform: translateX(-50%) translateY(0);
-    }
-
-    .presentation-overlay button {
-        width: 34px;
-        height: 34px;
-
-        border: 0;
-        border-radius: 50%;
-
-        background: transparent;
-        color: white;
-
-        font-size: 17px;
-
-        cursor: pointer;
-
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .presentation-overlay button:hover {
-        background: rgba(255,255,255,.14);
-    }
-
-    .presentation-counter {
-        min-width: 65px;
-        text-align: center;
-
-        color: white;
-        font-size: 12px;
-        font-weight: 600;
-        font-variant-numeric: tabular-nums;
-    }
-
-    @media (max-width: 700px) {
-        .presentation-overlay {
-            bottom: 10px;
-        }
-    }
-
-    /* Shown the moment a slide starts loading a fresh page from the
-       database, hidden again once that page has finished loading - so a
-       page swap never reads as a frozen screen. A slim bar at the very top
-       edge, above every slide's own padding, so it never lands on top of a
-       title, a card or the per-page "Live" badge the way a corner pill
-       would on a full-bleed slide. */
-    .presentation-loading {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 3px;
-        z-index: 60;
-        overflow: hidden;
-
-        opacity: 0;
-        transition: opacity .15s ease;
-        pointer-events: none;
-    }
-
-    .presentation-loading.is-visible {
-        opacity: 1;
-    }
-
-    .presentation-loading::after {
-        content: "";
-        position: absolute;
-        top: 0; bottom: 0;
-        width: 40%;
-        background: linear-gradient(90deg, transparent, #7B3FA0 15%, #3B1D63 50%, #7B3FA0 85%, transparent);
-        animation: presentation-loading-sweep 1s ease-in-out infinite;
-    }
-
-    @keyframes presentation-loading-sweep {
-        0%   { left: -40%; }
-        100% { left: 100%; }
-    }
-</style>
-
-
-<div class="presentation-shell">
-
-    <iframe
-        id="presentationFrame"
-        class="presentation-frame"
-        title="Reporting Dashboard Presentation"
-        src="{{ slides.0.url }}">
-    </iframe>
-
+    <!-- TOP INSIGHTS (last page) -->
+    <section class="panel" id="panel-insights" role="tabpanel">
+      <div class="deck-head">
+        <div class="deck-title"><h1>Top insights</h1><p class="sub" id="insights-sub"></p></div>
+      </div>
+      <div class="insights" id="insights"></div>
+    </section>
+  </main>
 </div>
 
-<div id="presentationLoading" class="presentation-loading" role="status" aria-label="Loading"></div>
-
-
-<div class="presentation-overlay">
-
-    <button
-        type="button"
-        id="previousBtn"
-        title="Previous"
-        aria-label="Previous slide">◀</button>
-
-    <span
-        id="slideIndicator"
-        class="presentation-counter">
-        1 / {{ slides|length }}
-    </span>
-
-    <button
-        type="button"
-        id="nextBtn"
-        title="Next"
-        aria-label="Next slide">▶</button>
-
-    <button
-        type="button"
-        id="pauseBtn"
-        title="Pause"
-        aria-label="Pause presentation">❚❚</button>
-
-</div>
-
-
-<script>
-    window.PRESENTATION_SLIDES = [
-        {% for slide in slides %}
-        {
-            url: "{{ slide.url|escapejs }}",
-            title: "{{ slide.title|escapejs }}"
-        }{% if not forloop.last %},{% endif %}
-        {% endfor %}
-    ];
-</script>
-
-<script src="{% static 'js/presentation.js' %}"></script>
-
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawer-title" role="dialog">
+  <div class="drawer-head">
+    <button type="button" class="icon-btn" id="drawer-back" aria-label="Back to the list" title="Back to the list" hidden>&#x2190;</button>
+    <div><h2 id="drawer-title"></h2><p id="drawer-sub"></p></div>
+    <button type="button" class="icon-btn" id="drawer-close" aria-label="Close">&#x2715;</button>
+  </div>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+<div class="toast" id="toast" role="status"></div>
 {% endblock %}

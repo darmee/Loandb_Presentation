@@ -2,7 +2,14 @@ from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
+import mimetypes
 import os
+
+# Windows takes file types from the registry, where .js is often registered as
+# text/plain. Served that way with `nosniff`, browsers refuse to run the
+# presentation's scripts and the page stays empty. Pin the correct types.
+mimetypes.add_type("text/javascript", ".js", True)
+mimetypes.add_type("text/css", ".css", True)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -19,7 +26,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
-    "django_filters",
     "axes",
     "loans",
 ]
@@ -55,7 +61,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "loans.context_processors.navigation",
+                "loans.context_processors.assets",
             ],
         },
     },
@@ -131,7 +137,6 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "presentation"
 LOGOUT_REDIRECT_URL = "login"
 
-EXPORT_INCLUDE_PII = os.getenv("EXPORT_INCLUDE_PII", "False").lower() == "true"
 
 
 AXES_FAILURE_LIMIT = 5

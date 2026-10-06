@@ -1,22 +1,17 @@
 from django.urls import path
+from django.views.generic import RedirectView
 
 from . import views
 
 urlpatterns = [
-    path("", views.dashboard, name="dashboard"),
-    path("all/", views.all_requests, name="all-requests"),
+    path("", views.presentation, name="presentation"),
+    # Old bookmarks land on the presentation rather than a 404.
+    path("presentation/", RedirectView.as_view(pattern_name="presentation", permanent=False)),
     path("healthz/", views.healthz, name="healthz"),
-    path("presentation/", views.presentation, name="presentation"),
-    # Must precede <str:product>/, which would otherwise swallow "analytics".
-    path("analytics/", views.analytics, name="analytics"),
-    path("analytics/overview/", views.monthly_overview, name="monthly-overview"),
-    path("analytics/panel/", views.analytics_panel, name="analytics-panel"),
-    path("<str:product>/", views.ProductListView.as_view(), name="product-list"),
-    path("<str:product>/export/xlsx/", views.export_xlsx, name="export-xlsx"),
-    path("<str:product>/<int:pk>/", views.ProductDetailView.as_view(), name="loan-detail"),
-    path(
-        "<str:product>/<int:pk>/document/<int:doc_id>/",
-        views.document,
-        name="loan-document",
-    ),
+    path("api/dashboard/", views.api_dashboard, name="api-dashboard"),
+    path("api/day/", views.api_day, name="api-day"),
+    path("api/drill/", views.api_drill, name="api-drill"),
+    path("api/compare/", views.api_compare, name="api-compare"),
+    path("api/search/", views.api_search, name="api-search"),
+    path("api/journey/<str:product>/<int:pk>/", views.api_journey, name="api-journey"),
 ]

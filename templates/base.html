@@ -1,305 +1,42 @@
 {% load static %}<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
-<title>{% block title %}Loan Reports{% endblock %} &middot; DashMFB</title>
+<meta name="color-scheme" content="dark light">
+<title>{% block title %}Loan Journey{% endblock %} &middot; DashMFB</title>
 <link rel="icon" href="{% static 'img/favicon.ico' %}" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-32.png' %}">
 <link rel="apple-touch-icon" href="{% static 'img/apple-touch-icon.png' %}">
-<style>
-  :root {
-    --brand: #4F1A60;
-    --brand-dark: #3B1248;
-    --brand-tint: #F6F0F8;
-    --brand-line: #D9C4E0;
-    --ink: #1B1B1F;
-    --muted: #6B6B76;
-    --faint: #9A9AA5;
-    --line: #E4E4EB;
-    --bg: #F6F6F9;
-    --card: #FFFFFF;
-    --ok: #17724F;
-    --ok-bg: #DDF3E9;
-    --warn: #8A5A00;
-    --warn-bg: #FFF1D6;
-    --bad: #A3211B;
-    --bad-bg: #FBE3E1;
-    --info: #1E4FA3;
-    --info-bg: #E5EDFB;
-    --radius: 12px;
-    --shadow: 0 1px 2px rgba(27,27,31,.05), 0 1px 8px rgba(27,27,31,.04);
-  }
-  * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  a { color: var(--brand); }
-  :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
-
-  /* --- app bar --------------------------------------------------------- */
-  .bar {
-    background: var(--brand); color: #fff;
-    padding: 0 clamp(12px, 3vw, 22px);
-    display: flex; align-items: center; gap: 14px; min-height: 60px;
-    flex-wrap: wrap;
-  }
-  .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; color: #fff; }
-  /* The mark is dark purple, so it needs a white plate - directly on the
-     purple bar it would disappear. */
-  .brand .plate {
-    background: #fff; border-radius: 8px; padding: 5px 7px;
-    display: flex; align-items: center; line-height: 0;
-  }
-  .brand .plate img { height: 24px; width: auto; display: block; }
-  .brand span { font-weight: 650; letter-spacing: .2px; white-space: nowrap; }
-  .bar .right { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 13px; }
-  .bar .right form { margin: 0; }
-  .bar .who { opacity: .85; white-space: nowrap; }
-  .bar .right button {
-    background: transparent; border: 1px solid rgba(255,255,255,.42); color: #fff;
-    padding: 6px 12px; border-radius: 7px; cursor: pointer; font: inherit; white-space: nowrap;
-  }
-  .bar .right button:hover { background: rgba(255,255,255,.15); }
-
-  .subnav {
-    background: var(--card); border-bottom: 1px solid var(--line);
-    position: sticky; top: 0; z-index: 20; position: relative;
-  }
-  .subnav::after {
-    content: ""; position: absolute; right: 0; top: 0; bottom: 1px; width: 34px;
-    background: linear-gradient(90deg, rgba(255,255,255,0), var(--card));
-    pointer-events: none;
-  }
-  @media (min-width: 861px) { .subnav::after { display: none; } }
-  .subnav-inner {
-    max-width: 1500px; margin: 0 auto; display: flex; gap: 2px;
-    padding: 0 clamp(12px, 3vw, 22px);
-    overflow-x: auto; -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-  .subnav-inner::-webkit-scrollbar { display: none; }
-  .subnav a {
-    color: var(--muted); text-decoration: none; padding: 12px 14px;
-    font-weight: 550; white-space: nowrap; border-bottom: 2.5px solid transparent;
-  }
-  .subnav a:hover { color: var(--brand); background: var(--brand-tint); }
-  .subnav a.on { color: var(--brand); border-bottom-color: var(--brand); font-weight: 650; }
-
-  .wrap { max-width: 1500px; margin: 0 auto; padding: clamp(16px, 3vw, 26px) clamp(12px, 3vw, 22px) 64px; }
-  h1 { font-size: clamp(19px, 2.4vw, 23px); margin: 0 0 3px; letter-spacing: -.2px; }
-  h2 { font-size: 12px; margin: 28px 0 10px; color: var(--muted); font-weight: 650;
-       text-transform: uppercase; letter-spacing: .7px; }
-  .sub { color: var(--muted); margin: 0 0 18px; }
-
-  .card { background: var(--card); border: 1px solid var(--line);
-          border-radius: var(--radius); box-shadow: var(--shadow); }
-  .banner {
-    background: var(--warn-bg); border: 1px solid #E3C766; color: #6B4E00;
-    padding: 10px 15px; border-radius: 9px; margin-bottom: 16px; font-weight: 500;
-  }
-
-  /* --- stat tiles ------------------------------------------------------ */
-  .tiles { display: grid; gap: 11px; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); }
-  .tile { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
-          padding: 14px 15px; box-shadow: var(--shadow); }
-  .tile .k { color: var(--muted); font-size: 11.5px; text-transform: uppercase;
-             letter-spacing: .5px; font-weight: 600; }
-  .tile .v { font-size: clamp(20px, 3vw, 25px); font-weight: 700; letter-spacing: -.5px; margin-top: 2px; }
-
-  /* --- forms ----------------------------------------------------------- */
-  .filters summary {
-    cursor: pointer; font-weight: 600; padding: 13px 16px; list-style: none;
-    display: flex; align-items: center; gap: 9px;
-  }
-  .filters summary::-webkit-details-marker { display: none; }
-  .filters summary::after { content: "▾"; color: var(--muted); margin-left: auto; }
-  .filters[open] summary::after { content: "▴"; }
-  .filters summary .count {
-    background: var(--brand); color: #fff; border-radius: 999px;
-    padding: 1px 8px; font-size: 12px; font-weight: 600;
-  }
-  .filters .body { padding: 0 16px 15px; }
-  .grid { display: grid; gap: 11px; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); }
-  .field { min-width: 0; }
-  .field label { display: block; font-size: 11.5px; font-weight: 600; color: var(--muted);
-                 margin-bottom: 4px; text-transform: uppercase; letter-spacing: .4px; }
-  /* Django renders these widgets unstyled; without this the filter row is
-     browser-default controls of four different heights. */
-  .field input, .field select, .field textarea,
-  input[type=text], input[type=number], input[type=date], input[type=password], select {
-    width: 100%; padding: 8px 10px; font: inherit; color: var(--ink);
-    background: #fff; border: 1px solid var(--line); border-radius: 8px;
-    min-height: 38px; appearance: none;
-  }
-  .field select, select {
-    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath fill='%236B6B76' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 11px center; padding-right: 30px;
-  }
-  .field input:focus, .field select:focus, input:focus, select:focus {
-    border-color: var(--brand); outline: none; box-shadow: 0 0 0 3px rgba(79,26,96,.12);
-  }
-  .btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-    padding: 9px 17px; border-radius: 8px; font: inherit; font-weight: 600;
-    cursor: pointer; text-decoration: none; border: 1px solid transparent; min-height: 38px;
-  }
-  .btn-primary { background: var(--brand); color: #fff; }
-  .btn-primary:hover { background: var(--brand-dark); }
-  .btn-secondary { background: #fff; border-color: var(--brand-line); color: var(--brand); }
-  .btn-secondary:hover { background: var(--brand-tint); }
-  .actions { margin-top: 13px; display: flex; gap: 9px; align-items: center; flex-wrap: wrap; }
-
-  /* --- chips ----------------------------------------------------------- */
-  .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 13px; }
-  .chip {
-    display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
-    background: var(--brand-tint); color: var(--brand); border: 1px solid var(--brand-line);
-    border-radius: 999px; padding: 4px 11px; font-size: 12.5px; font-weight: 500;
-  }
-  .chip:hover { background: #EDE0F1; }
-  .chip b { font-weight: 650; }
-
-  /* --- tables ---------------------------------------------------------- */
-  .scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius); }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 10px 13px; border-bottom: 1px solid var(--line); }
-  thead th {
-    background: #FAFAFC; font-size: 11.5px; text-transform: uppercase;
-    letter-spacing: .5px; color: var(--muted); white-space: nowrap; font-weight: 650; z-index: 1;
-  }
-  th a { color: inherit; text-decoration: none; display: inline-flex; gap: 4px; align-items: center; }
-  th a:hover { color: var(--brand); }
-  tbody tr:hover { background: var(--brand-tint); }
-  tbody tr:last-child td { border-bottom: 0; }
-  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  td { overflow-wrap: break-word; }
-  td.num, th.num { white-space: nowrap; }
-  /* No min-width: `break-word` plus nowrap on numeric cells already stops
-     columns cramming, and forcing a minimum only clipped the last column. */
-  .ref { font-weight: 650; text-decoration: none; }
-  .empty { padding: 44px 20px; text-align: center; color: var(--muted); }
-
-  .pill {
-    display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px;
-    font-weight: 600; background: #EDEDF2; color: var(--muted); white-space: nowrap;
-  }
-  .pill.DISBURSED { background: var(--ok-bg); color: var(--ok); }
-  .pill.REJECTED { background: var(--bad-bg); color: var(--bad); }
-  .pill.PENDING { background: #EDEDF2; color: var(--muted); }
-  .pill.CORRECTION_REQUESTED { background: var(--warn-bg); color: var(--warn); }
-  .pill.REVIEWED, .pill.CREDIT_APPROVED, .pill.CONTROL_APPROVED { background: var(--info-bg); color: var(--info); }
-
-  .muted { color: var(--muted); }
-
-  /* Charts keep their drawing width and scroll on narrow screens. Letting an
-     SVG shrink to fit scales its text down with it - a 780-wide viewBox in a
-     350px column renders 10px labels at about 4px. */
-  .chartwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .chartwrap > svg { display: block; }
-  @media (max-width: 700px) {
-    .chartwrap > svg { min-width: 620px; }
-  }
-  /* The pie is small enough to scale instead. */
-  .pie { flex: 0 0 auto; width: 250px; max-width: 100%; height: auto; }
-
-  /* Label/value tables on the detail page. */
-  table.kv th[scope=row] {
-    width: 250px; background: #fff; text-transform: none; font-size: 13px;
-    letter-spacing: 0; color: var(--muted); font-weight: 500; position: static;
-    vertical-align: top;
-  }
-  table.kv td { word-break: break-word; }
-  @media (max-width: 640px) {
-    table.kv, table.kv tbody, table.kv tr, table.kv th, table.kv td { display: block; width: 100%; }
-    table.kv tr { padding: 9px 13px; border-bottom: 1px solid var(--line); }
-    table.kv th[scope=row] { width: auto; padding: 0; font-size: 11px;
-      text-transform: uppercase; letter-spacing: .4px; color: var(--faint); font-weight: 600; }
-    table.kv td { padding: 1px 0 0; border: 0; }
-  }
-  .pager { display: flex; gap: 14px; align-items: center; margin-top: 15px; flex-wrap: wrap; }
-  .pager a { text-decoration: none; padding: 6px 11px; border: 1px solid var(--line);
-             border-radius: 8px; background: #fff; }
-  .pager a:hover { border-color: var(--brand-line); background: var(--brand-tint); }
-  footer { color: var(--faint); font-size: 12px; margin-top: 36px; text-align: center; }
-
-  /* --- narrow screens -------------------------------------------------- */
-  @media (max-width: 860px) {
-    .bar { min-height: 52px; flex-wrap: nowrap; }
-    .bar .right { font-size: 12.5px; }
-    .bar .who { display: none; }
-    .brand span { font-size: 14px; }
-    .subnav a { padding: 11px 12px; font-size: 13.5px; }
-  }
-  @media (max-width: 640px) {
-    /* The list table stops being a table and becomes one card per row -
-       six columns cannot be read on a phone, and horizontal scrolling a
-       whole table is worse than stacking it. */
-    table.stack thead { display: none; }
-    table.stack, table.stack tbody, table.stack tr { display: block; width: 100%; }
-    table.stack tr { border-bottom: 1px solid var(--line); padding: 10px 13px; }
-    table.stack td {
-      display: grid; grid-template-columns: 88px minmax(0, 1fr);
-      align-items: baseline; gap: 10px;
-      border: 0; padding: 3px 0; text-align: left !important;
-    }
-    table.stack td::before {
-      content: attr(data-label); font-size: 11px; text-transform: uppercase;
-      letter-spacing: .4px; color: var(--faint); font-weight: 600;
-    }
-    h2 { margin-top: 22px; }
-  }
-</style>
+{# Runs before first paint so a light-mode user never sees a dark flash. #}
+<script src="{% static 'js/theme.js' %}?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="{% static 'css/app.css' %}?v={{ asset_version }}">
+{% block head %}{% endblock %}
 </head>
-<body>
-<div class="bar">
-  <a class="brand" href="{% url 'dashboard' %}">
+<body class="{% block body_class %}page{% endblock %}">
+{% block body %}
+<header class="appbar">
+  <a class="brand" href="/">
     <span class="plate"><img src="{% static 'img/logo.png' %}" alt="DashMFB"></span>
-    <span>Loan Reports</span>
+    <span class="brand-name">Loan Journey</span>
   </a>
-  {% if user.is_authenticated %}
-  <div class="right">
+  <div class="appbar-right">
+    <button type="button" class="icon-btn" data-theme-toggle title="Switch light/dark" aria-label="Switch between light and dark mode">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+    </button>
+    {% if user.is_authenticated %}
     <span class="who">{{ user.get_username }}</span>
-    <form method="post" action="{% url 'logout' %}">{% csrf_token %}
-      <button type="submit">Sign out</button>
-    </form>
+    <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn btn-ghost">Sign out</button></form>
+    {% endif %}
   </div>
-  {% endif %}
-</div>
-{% comment %}
-The old multi-page subnav (Dashboard / All / Analytics / Analytics panel /
-Monthly overview / one link per loan product) lived here. The app is now
-built around the presentation, so it's gone from the nav - but every one
-of those pages is still there, unchanged, at its own URL (/, /all/,
-/analytics/, /analytics/panel/, /analytics/overview/, /cashback/, etc.)
-for direct/bookmarked access. Restore the block below to bring the strip
-back.
-
-{% if user.is_authenticated %}
-<div class="subnav">
-  <div class="subnav-inner">
-    <a href="{% url 'dashboard' %}" {% if not product %}class="on"{% endif %}>Dashboard</a>
-    <a href="{% url 'all-requests' %}" {% if product == 'all' %}class="on"{% endif %}>All</a>
-    <a href="{% url 'analytics' %}" {% if product == 'analytics' %} class="on"{% endif %}>Analytics</a>
-    <a href="{% url 'analytics-panel' %}" {% if product == 'analytics-panel' %} class="on"{% endif %}>Analytics panel</a>
-    <a href="{% url 'monthly-overview' %}" {% if product == 'monthly-overview' %} class="on"{% endif %}>Monthly overview</a>
-    <a href="{% url 'presentation' %}" {% if request.path == '/presentation/' %}class="on"{% endif %}>Presentation</a>
-    {% for code, label in nav_products %}
-      <a href="{% url 'product-list' code %}" {% if product == code %}class="on"{% endif %}>{{ label }}</a>
-    {% endfor %} 
-  </div>
-</div>
-{% endif %}
-{% endcomment %}
-
-<div class="wrap">
+</header>
+<main class="wrap">
   {% if sample %}<div class="banner">Showing fabricated sample data &mdash; not the live loan database.</div>{% endif %}
   {% block content %}{% endblock %}
-  <footer>DashMFB Loan Reports &middot; read-only</footer>
-</div>
+  <footer class="foot">DashMFB Loan Journey &middot; read-only</footer>
+</main>
+{% endblock %}
+<script src="{% static 'js/theme-toggle.js' %}?v={{ asset_version }}" defer></script>
 </body>
 </html>
