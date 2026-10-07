@@ -735,6 +735,50 @@
     }, { onClick: (it) => openDrill("month", rows[it.dataIndex].key, { product }) });
   }
 
+  /* Short periods (up to ~3 months) show one bar per day; longer ones one per
+     month. A month view of "This month" would be a single bar. */
+  const DAILY_MAX_DAYS = 92;
+  const DAY_CHART_VISIBLE = 31;
+
+  function periodChart(scope, d, colour) {
+    const product = scope === "all" ? null : scope;
+    const id = `ch-months-${scope}`;
+    const days = dayCount(d.window.start, d.window.end);
+    const perDay = days <= DAILY_MAX_DAYS;
+    $(`period-title-${scope}`).textContent = perDay ? "Applications per day" : "Applications per month";
+    $(`period-hint-${scope}`).textContent = perDay ? "Click a day" : "Click a month";
+    if (!perDay) {
+      monthsChart(id, d.scopes[scope], product, { colour });
+      return;
+    }
+    const p = P();
+    const rows = d.daily[scope].days;
+    const zoom = rows.length > DAY_CHART_VISIBLE ? [
+      { type: "inside", start: 100 - (DAY_CHART_VISIBLE / rows.length) * 100, end: 100 },
+      { type: "slider", start: 100 - (DAY_CHART_VISIBLE / rows.length) * 100, end: 100, height: 12, bottom: 0,
+        showDataShadow: false, borderColor: p.axis, fillerColor: "rgba(57,135,229,.18)",
+        textStyle: { color: p.muted, fontSize: 10 }, labelFormatter: (i) => (rows[i] ? shortDate(rows[i].date) : "") },
+    ] : undefined;
+    draw(id, {
+      tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (its) => {
+        const r = rows[its[0].dataIndex];
+        return tipRows(weekdayDate(r.date), [
+          { label: "Applications", value: fmt(r.submitted), color: colour || p.bar },
+          { label: "Requested", value: moneyFull(r.submitted_value) },
+          { label: "Disbursed that day", value: fmt(r.disbursed) },
+        ], "Click for the day's details");
+      } },
+      grid: grid({ top: 22, bottom: zoom ? 22 : 4 }),
+      dataZoom: zoom,
+      xAxis: catAxis(rows.map((r) => shortDate(r.date)), { axisLabel: { color: p.ink2, fontSize: 11, hideOverlap: true } }),
+      yAxis: valAxis({ minInterval: 1 }),
+      series: [bar("Applications", rows.map((r) => r.submitted), colour || p.bar, {
+        barCategoryGap: "22%",
+        label: { show: true, position: "top", color: p.ink, fontSize: 11, fontWeight: 650, formatter: (it) => (it.value ? fmt(it.value) : "") },
+      })],
+    }, { onDay: (i) => rows[i] && openDay(rows[i].date, product) });
+  }
+
   function rankBars(id, items, colour, opts) {
     opts = opts || {};
     const p = P();
@@ -802,7 +846,7 @@
       ],
     }, { onClick: (it) => selectTab(`product-${products[it.dataIndex].key}`) });
 
-    monthsChart("ch-months-all", all, null);
+    periodChart("all", d);
   }
 
   // --- MONTHLY OVERVIEW --------------------------------------------------------
@@ -841,7 +885,7 @@
     $(`sub-${code}`).textContent = `${fmt(block.tiles.applications)} applications · ${money(block.tiles.requested_value)} requested · ${periodText()}`;
     tiles(`tiles-${code}`, block.tiles, code);
     outcomePie(code, block);
-    monthsChart(`ch-months-${code}`, block, code, { colour: productColour(code) });
+    periodChart(code, d, productColour(code));
 
     if (code !== "cash-for-car") {
       rankBars(`ch-bands-${code}`, block.bands, productColour(code), { kind: "band", product: code });

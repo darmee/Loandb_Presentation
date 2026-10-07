@@ -18,9 +18,9 @@ month, or any custom dates) apply to every page.
 
 | Page | What it shows (deck pages: four charts, two on top, two below) |
 |---|---|
-| Overview | **All requests**: status tiles; request type comparison (pie); final outcome (pie) with a **See why...** dropdown; loan volume by product (bar - hover ranks the products and stars the highest); applications per month |
+| Overview | **All requests**: status tiles; request type comparison (pie); final outcome (pie) with a **See why...** dropdown; loan volume by product (bar - hover ranks the products and stars the highest); applications per month (per day when the period is about three months or shorter - This month, 30 days, 90 days) |
 | Monthly overview | Applications (or value) per month, loan size distribution, top states, officer performance |
-| Cashback / Public Sector | Final outcome with **See why...**, applications per month, loan size distribution, top states |
+| Cashback / Public Sector | Final outcome with **See why...**, applications per month (per day for short periods; click a day for its requests), loan size distribution, top states |
 | Cash for Car | Final outcome, applications per month, loan size distribution / top states (a switch on one card), and the **Dash vs Floauto loan split** with who took the higher share per loan |
 | Daily activity | Submitted / reviewed / approved / disbursed / rejected per day (14 days on screen, slider to go back), a day-by-day table and a calendar |
 | Applications vs disbursements | Running totals, value requested vs disbursed |
