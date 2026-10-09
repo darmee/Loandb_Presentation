@@ -54,17 +54,13 @@ host = os.getenv("DJANGO_BIND_HOST", "0.0.0.0")
 port = int(os.getenv("DJANGO_PORT", "8700"))
 threads = int(os.getenv("DJANGO_THREADS", "8"))
 
-print(f"Loan Reports portal -> http://{host}:{port}  ({threads} threads)", flush=True)
+print(f"Loan Journey presentation -> http://{host}:{port}  ({threads} threads)", flush=True)
 
 from django.conf import settings  # noqa: E402
 
 db = settings.DATABASES["loans"]
 print(f"Settings: DEBUG={settings.DEBUG}  hosts={settings.ALLOWED_HOSTS}", flush=True)
 print(f"Database: {db.get('HOST')}/{db.get('NAME')}", flush=True)
-print(
-    f"Exports:  PII {'INCLUDED' if settings.EXPORT_INCLUDE_PII else 'masked'}",
-    flush=True,
-)
 if settings.SAMPLE_DB:
     print("WARNING: serving FABRICATED sample data (USE_SAMPLE_DB is set).", flush=True)
 

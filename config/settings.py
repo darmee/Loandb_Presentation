@@ -1,14 +1,34 @@
 from datetime import timedelta
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
+import mimetypes
 import os
+
+# Windows takes file types from the registry, where .js is often registered as
+# text/plain. Served that way with `nosniff`, browsers refuse to run the
+# presentation's scripts and the page stays empty. Pin the correct types.
+mimetypes.add_type("text/javascript", ".js", True)
+mimetypes.add_type("text/css", ".css", True)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "insecure-dev-key")
 DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() == "true"
+
+# The secret key signs the session cookie. Outside development a missing or
+# placeholder key means anyone who has read this repository can forge a
+# signed-in session, so refuse to start rather than run with one. serve.py
+# checks the key is set; this also covers manage.py, WSGI hosts, and the
+# placeholder copied straight from .env.example.
+PLACEHOLDER_SECRET_KEYS = {"", "insecure-dev-key", "change-me"}
+if not DEBUG and SECRET_KEY in PLACEHOLDER_SECRET_KEYS:
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY is missing or still a placeholder. Set a real one in .env "
+        "(see README, 'Generate a secret key') or set DJANGO_DEBUG=True for development."
+    )
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if h.strip()]
 
 INSTALLED_APPS = [
@@ -19,7 +39,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "django.contrib.humanize",
-    "django_filters",
     "axes",
     "loans",
 ]
@@ -55,7 +74,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-                "loans.context_processors.navigation",
+                "loans.context_processors.assets",
             ],
         },
     },
@@ -131,7 +150,6 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "presentation"
 LOGOUT_REDIRECT_URL = "login"
 
-EXPORT_INCLUDE_PII = os.getenv("EXPORT_INCLUDE_PII", "False").lower() == "true"
 
 
 AXES_FAILURE_LIMIT = 5

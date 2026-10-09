@@ -82,9 +82,9 @@ class Command(BaseCommand):
     help = "Create and populate a local PostgreSQL database with fabricated loans."
 
     def add_arguments(self, parser):
-        parser.add_argument("--cashback", type=int, default=250)
-        parser.add_argument("--cash-for-car", type=int, default=30)
-        parser.add_argument("--public-sector", type=int, default=20)
+        parser.add_argument("--cashback", type=int, default=1400)
+        parser.add_argument("--cash-for-car", type=int, default=260)
+        parser.add_argument("--public-sector", type=int, default=340)
         parser.add_argument("--seed", type=int, default=20260908,
                             help="RNG seed, so the same data is reproducible")
 
@@ -170,7 +170,7 @@ class Command(BaseCommand):
             ]
             self._insert(connection, model, rows)
             docs, comments, history = self._children(
-                request_types[model], count, admins
+                request_types[model], rows, admins
             )
             self._insert(connection, RequestDocument, docs)
             self._insert(connection, LoanComment, comments)
@@ -220,9 +220,43 @@ class Command(BaseCommand):
         self._insert(connection, Admin, rows)
         return [row["id"] for row in rows]
 
+    REJECTION_REASONS = {
+        "REVIEW": [
+            "Incomplete documentation.", "Could not verify identity (BVN mismatch).",
+            "Duplicate application.", "Applicant withdrew the request.",
+            "Could not verify employment.",
+        ],
+        "CREDIT": [
+            "Affordability below threshold.", "Adverse credit bureau record.",
+            "Debt-to-income ratio too high.", "Insufficient bank statement history.",
+            "Could not verify employment.",
+        ],
+        "CONTROL": [
+            "Outside product policy.", "Guarantor could not be verified.",
+            "Inconsistent information across documents.",
+        ],
+        "DISBURSEMENT": [
+            "Applicant withdrew the request.", "Account details invalid.",
+        ],
+    }
+    CORRECTION_MESSAGES = [
+        "Bank statement is illegible - please re-upload.",
+        "Upload a valid government-issued ID.",
+        "Utility bill older than 3 months.",
+        "Employment letter missing signature.",
+        "Name on account does not match application.",
+        "Please provide the last 6 months of payslips.",
+    ]
+
     def _spine(self, admins, created):
-        """A plausible position in the approval pipeline."""
-        roll = random.random()
+        """A plausible path through the approval pipeline.
+
+        Each stage either passes, sends the application back for correction
+        (which may later be resolved and continue), rejects it, or leaves it
+        sitting there. Stage hand-offs take hours to days, with the credit
+        stage deliberately the slowest so the bottleneck view has something
+        to find.
+        """
         spine = {
             "reviewed": False, "reviewed_by_id": None, "reviewed_at": None, "review_note": None,
             "credit_approved": False, "credit_approved_by_id": None,
@@ -237,50 +271,67 @@ class Command(BaseCommand):
             "correction_requested_by_id": None, "correction_requested_at": None,
             "correction_count": 0, "correction_stage": None,
         }
-        step = created + timedelta(days=1)
-
-        def advance(prefix, note):
-            nonlocal step
-            spine[f"{prefix}"] = True
-            spine[f"{prefix}_by_id"] = random.choice(admins)
-            spine[f"{prefix}_at"] = step
-            step += timedelta(days=random.randint(1, 4))
-            return note
-
-        if roll < 0.28:
-            return spine  # still pending
-        spine["review_note"] = advance("reviewed", "Documents complete.")
-        if roll < 0.38:
-            spine["correction_requested"] = True
-            spine["correction_message"] = "Bank statement is illegible - please re-upload."
-            spine["correction_requested_by_id"] = random.choice(admins)
-            spine["correction_requested_at"] = step
-            spine["correction_count"] = 1
-            spine["correction_stage"] = "REVIEW"
-            return spine
-        if roll < 0.48:
-            spine["rejected"] = True
-            spine["rejected_by_id"] = random.choice(admins)
-            spine["rejected_at"] = step
-            spine["rejection_reason"] = random.choice(
-                ["Affordability below threshold.", "Adverse credit bureau record.",
-                 "Could not verify employment."]
-            )
-            spine["rejected_stage"] = "CREDIT"
-            return spine
-        spine["credit_note"] = advance("credit_approved", "Within policy.")
-        if roll < 0.66:
-            return spine
-        spine["control_note"] = advance("control_approved", "Checks passed.")
-        if roll < 0.78:
-            return spine
-        spine["disbursement_note"] = advance("disbursed", "Value given.")
+        now = datetime.now(timezone.utc)
+        step = created
+        # (stage, flag, note field, note, hours range to complete, P(stop here),
+        #  P(reject | stop), P(correction | continue))
+        stages = [
+            ("REVIEW", "reviewed", "review_note", "Documents complete.", (2, 60), 0.16, 0.30, 0.22),
+            ("CREDIT", "credit_approved", "credit_note", "Within policy.", (12, 170), 0.22, 0.55, 0.10),
+            ("CONTROL", "control_approved", "control_note", "Checks passed.", (4, 70), 0.10, 0.35, 0.06),
+            ("DISBURSEMENT", "disbursed", "disbursement_note", "Value given.", (2, 48), 0.06, 0.30, 0.0),
+        ]
+        for stage, flag, note_field, note, (lo, hi), p_stop, p_reject, p_corr in stages:
+            if random.random() < p_corr:
+                # Sent back for correction; the applicant may or may not fix it.
+                step += timedelta(hours=random.randint(lo, hi))
+                if step > now:
+                    return spine
+                spine["correction_count"] += 1
+                spine["correction_requested_by_id"] = random.choice(admins)
+                spine["correction_requested_at"] = step
+                spine["correction_stage"] = stage
+                spine["correction_message"] = random.choice(self.CORRECTION_MESSAGES)
+                if random.random() < 0.35:
+                    spine["correction_requested"] = True   # still waiting on the applicant
+                    return spine
+                step += timedelta(hours=random.randint(6, 120))
+                if random.random() < 0.15:
+                    spine["correction_count"] += 1
+                    step += timedelta(hours=random.randint(6, 72))
+            step += timedelta(hours=random.randint(lo, hi))
+            if step > now:
+                return spine
+            if random.random() < p_stop:
+                if random.random() < p_reject:
+                    spine["rejected"] = True
+                    spine["rejected_by_id"] = random.choice(admins)
+                    spine["rejected_at"] = step
+                    spine["rejection_reason"] = random.choice(self.REJECTION_REASONS[stage])
+                    spine["rejected_stage"] = stage
+                return spine
+            spine[flag] = True
+            spine[f"{flag}_by_id"] = random.choice(admins)
+            spine[f"{flag}_at"] = step
+            spine[note_field] = note
         return spine
 
+    def _created_at(self):
+        """Weighted towards recent weeks, with quieter weekends."""
+        now = datetime.now(timezone.utc)
+        while True:
+            if random.random() < 0.75:
+                days = random.randint(0, 120)
+            else:
+                days = random.randint(121, 540)
+            created = now - timedelta(days=days, hours=random.randint(0, 23),
+                                      minutes=random.randint(0, 59))
+            if created.weekday() >= 5 and random.random() < 0.6:
+                continue
+            return created
+
     def _row(self, model, prefix, index, admins):
-        created = datetime.now(timezone.utc) - timedelta(
-            days=random.randint(0, 540), hours=random.randint(0, 23)
-        )
+        created = self._created_at()
         first = random.choice(FIRST_NAMES)
         last = random.choice(LAST_NAMES)
         amount = random.choice([150, 250, 400, 500, 750, 1000, 1500, 2500, 5000]) * 1000
@@ -362,7 +413,9 @@ class Command(BaseCommand):
                 "buyout_obligation": random.random() < 0.4,
                 "justification": None, "repayment_structure": "Equal monthly instalments",
                 "rate_floauto_share": 2.5, "rate_dash_share": 3.5,
-                "fee_floauto_share": 1.0, "fee_dash_share": 1.5, "fee_insurance_share": 0.5,
+                "fee_floauto_share": round(amount * random.uniform(0.008, 0.03), 2),
+                "fee_dash_share": round(amount * random.uniform(0.01, 0.035), 2),
+                "fee_insurance_share": round(amount * 0.005, 2),
                 "bank_reference_statement": None, "credit_bureau_search_ref": None,
                 "bank_analysis_status": random.choice(["COMPLETE", "PENDING", None]),
                 "bank_analysis_job_id": None, "bank_analysis_id": None,
@@ -404,9 +457,10 @@ class Command(BaseCommand):
             })
         return row
 
-    def _children(self, request_type, count, admins):
+    def _children(self, request_type, rows, admins):
         docs, comments, history = [], [], []
-        for request_id in range(1, count + 1):
+        for row in rows:
+            request_id = row["id"]
             for doc_type in random.sample(DOC_TYPES, random.randint(1, 4)):
                 docs.append({
                     "request_type": request_type,
@@ -416,7 +470,7 @@ class Command(BaseCommand):
                     "file_name": f"{doc_type.lower()}.png",
                     "mime_type": "image/png",
                     "data": TINY_PNG,
-                    "uploaded_at": datetime.now(timezone.utc) - timedelta(days=random.randint(1, 300)),
+                    "uploaded_at": row["created_at"] + timedelta(minutes=random.randint(1, 90)),
                 })
             if random.random() < 0.3:
                 comments.append({
@@ -429,20 +483,35 @@ class Command(BaseCommand):
                         "Awaiting updated bank statement.",
                     ]),
                     "is_recommendation": random.random() < 0.4,
-                    "created_at": datetime.now(timezone.utc) - timedelta(days=random.randint(1, 200)),
+                    "created_at": row["created_at"] + timedelta(hours=random.randint(1, 72)),
                 })
-            for action, frm, to in [("SUBMITTED", None, "PENDING"), ("REVIEWED", "PENDING", "REVIEWED")]:
-                if random.random() < 0.7:
-                    history.append({
-                        "request_type": request_type,
-                        "request_id": request_id,
-                        "actor_id": random.choice(admins),
-                        "action": action,
-                        "from_status": frm,
-                        "to_status": to,
-                        "note": None,
-                        "created_at": datetime.now(timezone.utc) - timedelta(days=random.randint(1, 300)),
-                    })
+            # History follows the application's actual path, so the journey
+            # view's audit trail agrees with its timeline.
+            events = [("SUBMITTED", None, "PENDING", row["created_at"], None)]
+            previous = "PENDING"
+            for flag, code in (("reviewed", "REVIEWED"), ("credit_approved", "CREDIT_APPROVED"),
+                               ("control_approved", "CONTROL_APPROVED"), ("disbursed", "DISBURSED")):
+                if row[flag]:
+                    events.append((code, previous, code, row[f"{flag}_at"], row.get(
+                        {"reviewed": "review_note", "credit_approved": "credit_note",
+                         "control_approved": "control_note", "disbursed": "disbursement_note"}[flag])))
+                    previous = code
+            if row["correction_requested_at"]:
+                events.append(("CORRECTION_REQUESTED", previous, "CORRECTION_REQUESTED",
+                               row["correction_requested_at"], row["correction_message"]))
+            if row["rejected"]:
+                events.append(("REJECTED", previous, "REJECTED", row["rejected_at"], row["rejection_reason"]))
+            for action, frm, to, at, note in events:
+                history.append({
+                    "request_type": request_type,
+                    "request_id": request_id,
+                    "actor_id": None if action == "SUBMITTED" else random.choice(admins),
+                    "action": action,
+                    "from_status": frm,
+                    "to_status": to,
+                    "note": note,
+                    "created_at": at,
+                })
         return docs, comments, history
 
     def _insert(self, connection, model, rows, extra=None):

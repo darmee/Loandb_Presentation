@@ -3,14 +3,14 @@
 <h1>The loan database is not reachable</h1>
 <p class="sub">The application is running, but it cannot reach the loan
 database{% if host %} at <code>{{ host }}</code>{% endif %}.</p>
-<div class="card" style="padding:16px">
-  <p style="margin-top:0"><strong>Usually one of:</strong></p>
+<div>
+  <p><strong>Usually one of:</strong></p>
   <ul>
     <li>The SSH tunnel has dropped &mdash; restart it and reload this page.</li>
     <li>PostgreSQL is not running on the server.</li>
     <li>The credentials in <code>.env</code> are wrong or the role was changed.</li>
   </ul>
-  <p class="muted" style="margin-bottom:0">Nothing is broken in the application
+  <p class="muted">Nothing is broken in the application
   itself, and no data has been lost &mdash; this portal only ever reads.</p>
 </div>
 {% endblock %}
