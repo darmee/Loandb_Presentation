@@ -8,12 +8,35 @@
 {% block body %}
 {{ config|json_script:"app-config" }}
 <div class="loading-bar" id="loading" role="status" aria-label="Loading"></div>
-<div class="app">
-  <header class="appbar" id="appbar">
+<div class="app" id="app">
+  {# The rail: brand, the pages, who is signed in. Always the company purple. #}
+  <aside class="rail" id="rail">
     <a class="brand" href="/">
       <span class="plate"><img src="{% static 'img/logo.png' %}" alt="DashMFB"></span>
-      <span class="brand-name">Loan Dashboard</span>
+      <span class="brand-name">Loan Dashboard<small>DashMFB</small></span>
     </a>
+    <span class="rail-label">Pages</span>
+    <nav class="tabs" id="tabs" role="tablist" aria-label="Pages">
+      <span class="tab-ink" id="tab-ink" aria-hidden="true"></span>
+      <button class="tab" role="tab" data-tab="overview" title="Overview"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg><span class="tab-label">Overview</span></button>
+      <button class="tab" role="tab" data-tab="daily" title="Daily report"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg><span class="tab-label">Daily report</span></button>
+      <button class="tab" role="tab" data-tab="monthly" title="Monthly overview"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M8 2.500v4M16 2.500v4M3 10h18"/></svg><span class="tab-label">Monthly overview</span></button>
+      {% for p in config.products %}<button class="tab" role="tab" data-tab="product-{{ p.code }}" title="{{ p.label }}"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true">{% if p.code == 'cash-for-car' %}<path d="M5 11l1.6-4.200A2 2 0 0 1 8.5 5.500h7a2 2 0 0 1 1.9 1.300L19 11"/><rect x="3" y="11" width="18" height="6" rx="2"/><path d="M6.5 17v2M17.5 17v2M7 14h.01M17 14h.01"/>{% elif p.code == 'public-sector' %}<path d="M3 21h18M5 21V10M9.7 21V10M14.3 21V10M19 21V10M12 3l9 5H3z"/>{% else %}<rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/><path d="M6 12h.01M18 12h.01"/>{% endif %}</svg><span class="tab-label">{{ p.label }}</span></button>
+      {% endfor %}<button class="tab" role="tab" data-tab="flow" title="Applications vs disbursements"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h15l-3.5-3.500M20 16H5l3.5 3.5"/></svg><span class="tab-label">Apps vs disbursements</span></button>
+      <button class="tab" role="tab" data-tab="compare" title="Compare periods"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18"/><rect x="3" y="5" width="6" height="14" rx="1.5"/><rect x="15" y="9" width="6" height="10" rx="1.5"/></svg><span class="tab-label">Compare periods</span></button>
+      <button class="tab" role="tab" data-tab="insights" title="Top insights"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3l2 5.5 5.5 2-5.5 2-2 5.5-2-5.5-5.5-2 5.5-2z"/><path d="M19 15l.800 2.2 2.2.800-2.2.800L19 21l-.800-2.2-2.2-.800 2.2-.800z"/></svg><span class="tab-label">Top insights</span></button>
+    </nav>
+    <div class="rail-foot">
+      <span class="avatar" aria-hidden="true">{{ user.get_username|slice:":1"|upper }}</span>
+      <span class="who">{{ user.get_username }}<small>Signed in</small></span>
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}
+        <button type="submit" class="icon-btn" title="Sign out" aria-label="Sign out"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3M16 17l5-5-5-5M21 12H9"/></svg></button>
+      </form>
+    </div>
+  </aside>
+
+  <div class="stage">
+  <header class="topbar">
     <div class="filters" role="group" aria-label="Period">
       <div class="seg" id="presets" role="group" aria-label="Period">
         <button type="button" data-preset="all">All time</button>
@@ -28,29 +51,26 @@
         <input class="input" type="date" id="end" aria-label="To">
       </span>
     </div>
-    <div class="appbar-right">
+    <div class="topbar-right">
+      <button type="button" class="search-trigger" id="search-open" title="Search a request or jump to a page (Ctrl+K)" aria-label="Search a request or jump to a page">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <span>Search requests</span><kbd>Ctrl K</kbd>
+      </button>
       {% if sample %}<span class="sample-pill" title="Showing fabricated sample data, not the live loan database">Sample data</span>{% endif %}
       <span class="live-pill"><i></i>Live</span>
       <button type="button" class="icon-btn" id="play" aria-pressed="false" title="Auto-play pages" aria-label="Auto-play pages">
-        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M7 4v16l13-8z"/></svg>
+        <svg class="play-ring" viewBox="0 0 38 38" aria-hidden="true"><rect x="1" y="1" width="36" height="36" rx="11" pathLength="100"/></svg>
+        <svg class="play" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+        <svg class="pause" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M7 5h3.500v14H7zM13.5 5H17v14h-3.500z"/></svg>
+      </button>
+      <button type="button" class="icon-btn" id="fullscreen" title="Full screen (F)" aria-label="Full screen">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/></svg>
       </button>
       <button type="button" class="icon-btn" data-theme-toggle title="Switch light/dark" aria-label="Switch between light and dark mode">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.500A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.500z"/></svg>
       </button>
-      <span class="who">{{ user.get_username }}</span>
-      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn btn-ghost">Sign out</button></form>
     </div>
   </header>
-
-  <nav class="tabs" role="tablist" aria-label="Pages">
-    <button class="tab" role="tab" data-tab="overview">Overview</button>
-    <button class="tab" role="tab" data-tab="monthly">Monthly overview</button>
-    {% for p in config.products %}<button class="tab" role="tab" data-tab="product-{{ p.code }}">{{ p.label }}</button>{% endfor %}
-    <button class="tab" role="tab" data-tab="daily">Daily activity</button>
-    <button class="tab" role="tab" data-tab="flow">Applications vs disbursements</button>
-    <button class="tab" role="tab" data-tab="compare">Compare periods</button>
-    <button class="tab" role="tab" data-tab="insights">Top insights</button>
-  </nav>
 
   <main class="content">
     <div id="error" class="error-box" hidden></div>
@@ -66,18 +86,18 @@
     <section class="panel" id="panel-overview" role="tabpanel">
       <div class="deck-head">
         <div class="deck-title"><h1>All requests</h1><p class="sub" id="overview-sub"></p></div>
-        <div class="tiles" id="tiles-all"></div>
+        <div class="tiles tiles-6" id="tiles-all"></div>
       </div>
       <div class="deck-grid g2x2">
         <div class="card">
-          <div class="card-head"><h3>Request type comparison</h3><span class="hint">Click a slice</span></div>
-          <div class="chart" id="ch-type-pie"></div>
+          <div class="card-head"><h3>Request type comparison</h3><span class="hint">Click a product</span></div>
+          <div class="pie-body"><div class="chart" id="ch-type-pie"></div><div class="legend" id="lg-type-pie"></div></div>
         </div>
         <div class="card">
           <div class="card-head"><h3>Final outcome</h3>
             <select class="input why" data-scope="all" aria-label="See the requests behind an outcome"><option value="">See why…</option></select>
           </div>
-          <div class="chart" id="ch-outcome-all"></div>
+          <div class="pie-body"><div class="chart" id="ch-outcome-all"></div><div class="legend" id="lg-outcome-all"></div></div>
         </div>
         <div class="card">
           <div class="card-head"><h3>Loan volume by product</h3><span class="hint">Hover for the ranking</span></div>
@@ -90,11 +110,32 @@
       </div>
     </section>
 
+    <!-- DAILY REPORT: what is happening on each loan, live; and the period day by day. The second page. -->
+    <section class="panel" id="panel-daily" role="tabpanel">
+      <div class="deck-head">
+        <div class="deck-title"><h1>Daily report</h1><p class="sub">What is happening on each loan, as it happens.</p></div>
+        <div class="head-controls">
+          <span class="live-state" id="live-state" role="status"><i></i><span id="live-text">Connecting&hellip;</span></span>
+          <select class="input product-select" aria-label="Product"><option value="all">All products</option>{% for p in config.products %}<option value="{{ p.code }}">{{ p.label }}</option>{% endfor %}</select>
+        </div>
+      </div>
+      <div class="deck-grid live-grid">
+        <div class="card">
+          <div class="card-head"><h3>Live activity</h3><span class="hint">Click a line for the loan's journey</span></div>
+          <div class="table-scroll" id="live-scroll"><ul class="feed" id="live-feed" aria-live="polite" aria-relevant="additions"></ul></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Day by day</h3><span class="hint">Click a day</span></div>
+          <div class="table-scroll" id="daily-table-scroll"><table class="data" id="daily-table"></table></div>
+        </div>
+      </div>
+    </section>
+
     <!-- MONTHLY OVERVIEW: four charts -->
     <section class="panel" id="panel-monthly" role="tabpanel">
       <div class="deck-head">
         <div class="deck-title"><h1>Monthly overview</h1><p class="sub" id="monthly-sub"></p></div>
-        <div class="tiles tiles-4" id="tiles-monthly"></div>
+        <div class="tiles tiles-3" id="tiles-monthly"></div>
       </div>
       <div class="deck-grid g2x2">
         <div class="card">
@@ -126,14 +167,14 @@
     <section class="panel product-panel" id="panel-product-{{ p.code }}" role="tabpanel" data-product="{{ p.code }}">
       <div class="deck-head">
         <div class="deck-title"><h1>{{ p.label }}</h1><p class="sub" id="sub-{{ p.code }}"></p></div>
-        <div class="tiles" id="tiles-{{ p.code }}"></div>
+        <div class="tiles tiles-6" id="tiles-{{ p.code }}"></div>
       </div>
       <div class="deck-grid g2x2">
         <div class="card">
           <div class="card-head"><h3>Final outcome</h3>
             <select class="input why" data-scope="{{ p.code }}" aria-label="See the requests behind an outcome"><option value="">See why…</option></select>
           </div>
-          <div class="chart" id="ch-outcome-{{ p.code }}"></div>
+          <div class="pie-body"><div class="chart" id="ch-outcome-{{ p.code }}"></div><div class="legend" id="lg-outcome-{{ p.code }}"></div></div>
         </div>
         <div class="card">
           <div class="card-head"><h3 id="period-title-{{ p.code }}">Applications per month</h3><span class="hint" id="period-hint-{{ p.code }}">Click a month</span></div>
@@ -151,7 +192,7 @@
         </div>
         <div class="card">
           <div class="card-head"><h3>Loan split &mdash; Dash vs Floauto <span class="muted">(disbursed)</span></h3></div>
-          <div class="chart" id="ch-split-pie"></div>
+          <div class="pie-body"><div class="chart" id="ch-split-pie"></div><div class="legend" id="lg-split-pie"></div></div>
           <div class="split-foot" id="split-foot"></div>
         </div>
         {% else %}
@@ -168,36 +209,11 @@
     </section>
     {% endfor %}
 
-    <!-- DAILY ACTIVITY -->
-    <section class="panel" id="panel-daily" role="tabpanel">
-      <div class="deck-head">
-        <div class="deck-title"><h1>Daily activity</h1><p class="sub">Requests reaching each step, day by day. Click a day for the details.</p></div>
-        <div class="head-controls">
-          <select class="input product-select" aria-label="Product"><option value="all">All products</option>{% for p in config.products %}<option value="{{ p.code }}">{{ p.label }}</option>{% endfor %}</select>
-          <div class="seg" id="daily-mode" role="group" aria-label="Chart style">
-            <button type="button" data-mode="bar" aria-pressed="true">Bars</button>
-            <button type="button" data-mode="line">Lines</button>
-          </div>
-        </div>
-      </div>
-      <div class="deck-grid daily-grid">
-        <div class="card span-all"><div class="chart" id="ch-daily"></div></div>
-        <div class="card">
-          <div class="card-head"><h3>Day by day</h3><span class="hint">Click a row</span></div>
-          <div class="table-scroll"><table class="data" id="daily-table"></table></div>
-        </div>
-        <div class="card">
-          <div class="card-head"><h3>Calendar</h3><span class="hint" id="calendar-note">Click a day</span></div>
-          <div class="chart" id="ch-calendar"></div>
-        </div>
-      </div>
-    </section>
-
     <!-- APPLICATIONS VS DISBURSEMENTS -->
     <section class="panel" id="panel-flow" role="tabpanel">
       <div class="deck-head">
-        <div class="deck-title"><h1>Applications vs disbursements</h1><p class="sub" id="flow-sub">What came in against what was paid out.</p></div>
-        <div class="tiles tiles-5" id="flow-tiles"></div>
+        <div class="deck-title"><h1>Applications vs disbursements</h1><p class="sub" id="flow-sub"></p></div>
+        <div class="tiles tiles-3" id="flow-tiles"></div>
         <div class="head-controls">
           <select class="input product-select" aria-label="Product"><option value="all">All products</option>{% for p in config.products %}<option value="{{ p.code }}">{{ p.label }}</option>{% endfor %}</select>
         </div>
@@ -231,7 +247,7 @@
         </div>
       </div>
       <div class="deck-grid compare-grid">
-        <div class="card card-scroll"><table class="data" id="compare-table"></table></div>
+        <div class="card card-scroll"><div class="cmp-list" id="compare-list"></div></div>
         <div class="card">
           <div class="card-head"><h3>Day by day</h3><div class="seg" id="compare-metric" role="group" aria-label="Metric">
             <button type="button" data-metric="submitted" aria-pressed="true">Submitted</button>
@@ -251,16 +267,32 @@
       <div class="insights" id="insights"></div>
     </section>
   </main>
+  </div>
 </div>
 
-<div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawer-title" role="dialog">
+<div class="scrim" id="scrim" aria-hidden="true"></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawer-title" aria-modal="true" role="dialog" inert>
   <div class="drawer-head">
-    <button type="button" class="icon-btn" id="drawer-back" aria-label="Back to the list" title="Back to the list" hidden>&#x2190;</button>
-    <div><h2 id="drawer-title"></h2><p id="drawer-sub"></p></div>
-    <button type="button" class="icon-btn" id="drawer-close" aria-label="Close">&#x2715;</button>
+    <button type="button" class="icon-btn" id="drawer-back" aria-label="Back to the list" title="Back to the list" hidden><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"/></svg></button>
+    <div class="min-w-0"><h2 id="drawer-title"></h2><p id="drawer-sub"></p></div>
+    <button type="button" class="icon-btn" id="drawer-close" aria-label="Close" title="Close (Esc)"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
   </div>
-  <div class="drawer-body" id="drawer-body"></div>
+  <div class="drawer-scroll" id="drawer-scroll"><div class="drawer-body" id="drawer-body"></div></div>
 </aside>
+
+{# Ctrl+K: find a request by name or reference, or jump to a page. #}
+<div class="palette-scrim" id="palette-scrim" aria-hidden="true"></div>
+<div class="palette" id="palette" role="dialog" aria-modal="true" aria-label="Search" inert>
+  <div class="palette-input">
+    <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input type="search" id="palette-q" placeholder="Search a request by name or reference, or jump to a page" autocomplete="off" spellcheck="false" maxlength="100"
+           role="combobox" aria-expanded="true" aria-controls="palette-list" aria-label="Search">
+    <kbd>Esc</kbd>
+  </div>
+  <div class="palette-scroll" id="palette-scroll"><div class="palette-list" id="palette-list" role="listbox" aria-label="Results"></div></div>
+  <div class="palette-foot">
+    <span><kbd>&uarr;</kbd><kbd>&darr;</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span>
+  </div>
+</div>
 <div class="toast" id="toast" role="status"></div>
 {% endblock %}

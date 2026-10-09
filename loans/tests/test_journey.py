@@ -162,6 +162,34 @@ class DrillAndCompareTests(SimpleTestCase):
         self.assertEqual((submitted["a"], submitted["b"], submitted["change"]), (4, 2, 100.0))
         self.assertEqual(submitted["direction"], "good")
 
+    def test_a_day_carries_the_hours_it_was_active(self):
+        # 08:30 UTC is 09:30 in Lagos. Submitted on the 1st, reviewed and
+        # credit-approved on the following days, at the same hour.
+        early = rec(1, created=datetime(2026, 9, 1, 8, 30, tzinfo=timezone.utc), stages=2)
+        late = rec(2, created=datetime(2026, 9, 1, 15, 5, tzinfo=timezone.utc))
+        days = {d["date"]: d for d in journey.daily_activity([early, late], *SEPT)}
+        self.assertEqual((days["2026-09-01"]["first_time"], days["2026-09-01"]["last_time"]), ("09:30", "16:05"))
+        self.assertEqual((days["2026-09-02"]["first_time"], days["2026-09-02"]["last_time"]), ("09:30", "09:30"))
+        # Credit approval is not one of the report's five steps: it is
+        # counted on its day, but it does not set the day's hours.
+        self.assertEqual(days["2026-09-03"]["credit_approved"], 1)
+        self.assertIsNone(days["2026-09-03"]["first_time"])
+        self.assertIsNone(days["2026-09-04"]["first_time"])
+
+    def test_an_insight_card_carries_few_figures(self):
+        # Read from across a room: a card with five numbers in it is a table.
+        import re
+        records = [rec(i, created=datetime(2026, 8 + i % 2, 1 + i % 20, 9, 0, tzinfo=timezone.utc), stages=i % 5,
+                       rejected=i % 4 == 0, reason="Adverse credit bureau record.", corrections=i % 2,
+                       product=["cashback", "cash-for-car", "public-sector"][i % 3])
+                   for i in range(1, 121)]
+        found = journey.insights(records, *SEPT, now=NOW)
+        self.assertTrue(found)
+        for insight in found:
+            with self.subTest(title=insight["title"]):
+                figures = re.findall(r"\d[\d,.]*", f"{insight['title']} {insight['detail']}")
+                self.assertLessEqual(len(figures), 3, insight)
+
     def test_insights_point_at_a_real_tab(self):
         records = [rec(i, stages=i % 5, rejected=(i % 7 == 0), reason="Adverse credit bureau record")
                    for i in range(1, 40)]

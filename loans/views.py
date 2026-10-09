@@ -13,7 +13,7 @@ visibility still has exactly one definition - `LoanRequestQuerySet.visible_to`
 """
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from functools import wraps
 
 from django.conf import settings
@@ -22,11 +22,12 @@ from django.db import connections
 from django.db.models import Count, DecimalField, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.db.utils import Error as DatabaseError
-from django.http import Http404, JsonResponse
+from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
+from django.views.decorators.cache import never_cache
 
-from . import journey
+from . import journey, live
 from .models import PRODUCTS, REQUEST_TYPE_BY_MODEL, ApprovalAuditLog, CashForCarRequest, LoanComment
 from .status import status_label
 
@@ -35,6 +36,7 @@ audit = logging.getLogger("loans.audit")
 MAX_RANGE_DAYS = 731
 DEFAULT_RANGE_DAYS = 30
 SEARCH_LIMIT = 25
+SEARCH_MAX_CHARS = 100
 
 
 # --- plumbing -----------------------------------------------------------------
@@ -45,12 +47,17 @@ def api_view(view):
     A redirect to the sign-in page would come back to fetch() as a 200 HTML
     page and fail somewhere confusing; a 401 lets the page send the user to
     sign in again cleanly.
+
+    Every answer is marked `no-store`. These responses carry applicant names,
+    and without it the browser keeps them in its cache, where they outlive
+    the session - readable on a shared computer after signing out.
     """
 
-    @wraps(view)
-    def wrapper(request, *args, **kwargs):
+    def respond(request, *args, **kwargs):
         if not request.user.is_authenticated:
             return JsonResponse({"error": "Your session has ended. Sign in again."}, status=401)
+        if request.method not in ("GET", "HEAD"):
+            return JsonResponse({"error": "This endpoint only reads."}, status=405)
         try:
             return view(request, *args, **kwargs)
         except DatabaseError:
@@ -59,6 +66,12 @@ def api_view(view):
             )
         except ValueError as exc:
             return JsonResponse({"error": str(exc)}, status=400)
+
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        response = respond(request, *args, **kwargs)
+        response["Cache-Control"] = "no-store"
+        return response
 
     return wrapper
 
@@ -99,6 +112,7 @@ def _records(request):
 
 # --- the page -----------------------------------------------------------------
 
+@never_cache
 @login_required
 def presentation(request):
     try:
@@ -197,6 +211,9 @@ def api_dashboard(request):
         insight_list.append(item)
 
     return JsonResponse({
+        # The page was told "today" when it loaded; one left open overnight
+        # needs to hear that the day has changed.
+        "today": today.isoformat(),
         "window": {"start": start.isoformat(), "end": end.isoformat(),
                    "all": request.GET.get("period", "all") == "all"},
         "data": span,
@@ -214,6 +231,35 @@ def api_day(request):
     """What happened on one day - the daily bar chart's drill-down."""
     day = _parse_date(request.GET.get("date"), timezone.localdate())
     return JsonResponse(journey.day_detail(_records(request), day))
+
+
+@api_view
+def api_live(request):
+    """What is happening on each loan, newest first - the daily report's feed.
+
+    The page asks every few seconds with `since` set to the newest moment it
+    already has, so most answers are empty and cost three small queries.
+    Without `since` it gets the latest events to start from.
+    """
+    since = request.GET.get("since") or None
+    if since:
+        try:
+            since = datetime.fromisoformat(since)
+        except ValueError:
+            raise ValueError(f"Not a moment in time: {since!r}. Use an ISO timestamp.")
+        if timezone.is_naive(since):
+            raise ValueError("`since` must carry its time zone, e.g. 2026-10-08T09:30:00+01:00.")
+    try:
+        limit = int(request.GET.get("limit") or live.DEFAULT_LIMIT)
+    except ValueError:
+        raise ValueError("`limit` must be a number.")
+    found = live.events(request.user, _product(request), since, limit)
+    return JsonResponse({
+        # The server's clock, so "12s ago" does not depend on the viewer's.
+        "now": timezone.localtime().isoformat(),
+        "latest": found[0]["at"] if found else None,
+        "events": found,
+    })
 
 
 @api_view
@@ -244,7 +290,7 @@ def api_compare(request):
 @api_view
 def api_search(request):
     """Find applications by reference number or applicant name."""
-    q = (request.GET.get("q") or "").strip()
+    q = (request.GET.get("q") or "").strip()[:SEARCH_MAX_CHARS]
     product = _product(request)
     recent = len(q) < 2   # nothing typed yet: show the latest applications
     rows = []
@@ -293,7 +339,8 @@ def _actor(admin):
 def api_journey(request, product, pk):
     """One application's path through the pipeline, step by step."""
     if product not in PRODUCTS:
-        raise Http404
+        # JSON like every other answer here, not Django's HTML 404 page.
+        return JsonResponse({"error": "No such loan product."}, status=404)
     model = PRODUCTS[product]
     loan = (
         model.objects.visible_to(request.user)

@@ -75,6 +75,10 @@ EVENTS = [
 ]
 EVENT_LABELS = dict(EVENTS)
 
+# The five steps the daily report shows: "Approved" there is control approval,
+# the last sign-off before money moves.
+REPORT_EVENTS = frozenset({"submitted", "reviewed", "control_approved", "disbursed", "rejected"})
+
 # Waiting longer than this at a gate counts as "stalled" rather than "in queue".
 STALLED_DAYS = 7
 
@@ -306,6 +310,16 @@ def local_date(value):
     return value
 
 
+@lru_cache(maxsize=262144)
+def local_clock(value):
+    """The Lagos time of day, "HH:MM", a timestamp fell at; None for a bare date."""
+    if not isinstance(value, datetime):
+        return None
+    if timezone.is_aware(value):
+        value = timezone.localtime(value)
+    return value.strftime("%H:%M")
+
+
 def _iso(value):
     if value is None:
         return None
@@ -382,18 +396,32 @@ def record_events(record):
 
 
 def daily_activity(records, start, end):
-    """One row per day: how many applications hit each milestone that day."""
+    """One row per day: how many applications hit each milestone that day.
+
+    `first_time` and `last_time` are the Lagos clock times ("HH:MM") of the
+    day's first and last event among the steps the daily report shows, or
+    None on a day with none - the hours the day was active.
+    """
     blank = {event: 0 for event, _label in EVENTS}
-    days = {day: dict(blank, submitted_value=0.0, disbursed_value=0.0) for day in date_range(start, end)}
+    days = {day: dict(blank, submitted_value=0.0, disbursed_value=0.0, first_time=None, last_time=None)
+            for day in date_range(start, end)}
     for record in records:
         for event, stamp in record_events(record):
             day = local_date(stamp)
             if day in days:
-                days[day][event] += 1
+                row = days[day]
+                row[event] += 1
                 if event == "submitted":
-                    days[day]["submitted_value"] += record.amount
+                    row["submitted_value"] += record.amount
                 elif event == "disbursed":
-                    days[day]["disbursed_value"] += record.amount
+                    row["disbursed_value"] += record.amount
+                if event in REPORT_EVENTS:
+                    clock = local_clock(stamp)
+                    if clock is not None:
+                        if row["first_time"] is None or clock < row["first_time"]:
+                            row["first_time"] = clock
+                        if row["last_time"] is None or clock > row["last_time"]:
+                            row["last_time"] = clock
     return [{"date": day.isoformat(), **values} for day, values in days.items()]
 
 
@@ -828,6 +856,10 @@ def insights(records, start, end, now=None):
 
     Each insight names the tab that explains it, so the presenter can click
     straight through to the evidence.
+
+    A card is read from across a room, so each one carries a figure or two
+    and no more: whole percentages and days, and the one count that gives the
+    finding its size. The page it opens has the rest.
     """
     now = now or timezone.now()
     found = []
@@ -852,48 +884,45 @@ def insights(records, start, end, now=None):
         if abs(change) >= 5:
             add(60 + min(abs(change), 40) / 2, "good" if change > 0 else "bad",
                 f"Applications {'up' if change > 0 else 'down'} {abs(change):.0f}% on the previous period",
-                f"{len(group):,} submitted against {len(prev_group):,} in the {(end - start).days + 1} days before.",
+                f"{len(group):,} submitted, against {len(prev_group):,} in the period before.",
                 "compare")
 
     # Biggest drop-off.
     lossy = max(gate_rows, key=lambda g: g["lost"])
     if lossy["lost"]:
         add(90, "bad", f"Most applicants are lost at {lossy['label']}",
-            f"{lossy['lost']:,} of {lossy['arrived']:,} who reached it ({lossy['loss_rate']}%) were rejected "
-            f"there ({lossy['rejected']:,}) or have been stuck for over {STALLED_DAYS} days ({lossy['stalled']:,}).",
+            f"{lossy['lost']:,} of the {lossy['arrived']:,} who reached it were rejected there, "
+            f"or have been stuck for over {STALLED_DAYS} days.",
             "funnel")
 
     # Bottleneck by time.
     slow = max(gate_rows, key=lambda g: g["median_days"] or 0)
     if slow["median_days"]:
         others = [g["median_days"] for g in gate_rows if g is not slow and g["median_days"]]
-        context = f", against {max(others):.1f} for the next slowest" if others else ""
         add(85, "bad" if slow["median_days"] >= 3 else "neutral",
-            f"{slow['label']} is the slowest step: {slow['median_days']} days median",
-            f"{slow['waiting']:,} applications are waiting there now{context}. "
-            f"1 in 10 takes {slow['p90_days']} days or more.", "funnel")
+            f"{slow['label']} is the slowest step",
+            f"It typically takes {_plain_days(slow['median_days'])}, and "
+            f"{slow['waiting']:,} applications are waiting there now.", "funnel")
 
     # Completion rate.
     if outcome["completion_rate"] is not None:
         prev = prev_outcome["completion_rate"]
-        length = (end - start).days + 1
-        # The previous cohort has had `length` more days to finish, so a lower
-        # rate now is expected and is not on its own bad news; a higher one is.
+        # The previous cohort has had a whole period longer to finish, so a
+        # lower rate now is expected and is not on its own bad news; a higher
+        # one is.
         delta = (
-            f" (previous period {prev}%, which has had {length} more days to complete)"
+            f" The period before stands at {prev:.0f}%, having had longer to complete."
             if prev is not None else ""
         )
         tone = "good" if prev is not None and outcome["completion_rate"] > prev + 2 else "neutral"
-        add(80, tone, f"{outcome['completion_rate']}% of applications have been disbursed",
-            f"{outcome['disbursed']:,} of {outcome['submitted']:,} submitted in this period{delta}. "
-            f"{outcome['in_progress']:,} are still in progress.", "funnel")
+        add(80, tone, f"{outcome['completion_rate']:.0f}% of applications have been disbursed",
+            f"{outcome['in_progress']:,} are still in progress.{delta}", "funnel")
 
     # Top rejection reason.
     rej = rejections(records, start, end)
     if rej["total"] and rej["categories"]:
         top = rej["categories"][0]
         add(75, "bad", f"{top['label']} drives {top['pct']:.0f}% of rejections",
-            f"{top['count']:,} of {rej['total']:,} applications rejected in this period. "
             f"Most rejections happen at {max(rej['by_stage'], key=lambda s: s['count'])['label']}.",
             "rejections")
 
@@ -903,20 +932,19 @@ def insights(records, start, end, now=None):
     if corr["corrected"] and a["median_days_to_disburse"] and c["median_days_to_disburse"]:
         extra = a["median_days_to_disburse"] - c["median_days_to_disburse"]
         add(70, "bad" if extra > 1 else "neutral",
-            f"Corrections add {extra:.1f} days to a loan",
-            f"{corr['corrected_pct']}% of applications were sent back at least once. They take "
-            f"{a['median_days_to_disburse']} days to disburse against {c['median_days_to_disburse']} for the rest, "
+            f"Corrections add {_plain_days(extra)} to a loan",
+            f"{corr['corrected_pct']:.0f}% of applications were sent back at least once, "
             f"and {corr['open_now']:,} are waiting on the applicant now.", "corrections")
 
     # Inflow vs outflow.
     flows = flow(records, start, end)
     if flows["net_backlog_change"] > 0 and flows["total_submitted"]:
         add(65, "bad", "Applications are coming in faster than they are closed",
-            f"{flows['total_submitted']:,} applications came in; {flows['total_disbursed']:,} were disbursed and "
-            f"{flows['total_rejected']:,} rejected.", "flow")
+            f"{flows['total_submitted']:,} came in; "
+            f"{flows['total_disbursed'] + flows['total_rejected']:,} were disbursed or rejected.", "flow")
     elif flows["net_backlog_change"] < 0:
         add(55, "good", "More applications closed than came in",
-            f"{flows['total_disbursed']:,} disbursed and {flows['total_rejected']:,} rejected against "
+            f"{flows['total_disbursed'] + flows['total_rejected']:,} were disbursed or rejected, against "
             f"{flows['total_submitted']:,} new applications.", "flow")
 
     # Busiest day.
@@ -925,8 +953,7 @@ def insights(records, start, end, now=None):
         busiest = max(days, key=lambda d: d["submitted"])
         if busiest["submitted"]:
             add(50, "neutral", f"Busiest day: {_fmt_day(busiest['date'])}",
-                f"{busiest['submitted']} submitted, {busiest['reviewed']} reviewed, "
-                f"{busiest['disbursed']} disbursed, {busiest['rejected']} rejected.", "daily")
+                f"{busiest['submitted']} applications came in that day.", "daily")
 
     # Product conversion spread.
     products = [p for p in by_product(group) if p["submitted"] >= 10]
@@ -935,8 +962,8 @@ def insights(records, start, end, now=None):
         worst = min(products, key=lambda p: p["completion_rate"] or 0)
         if (best["completion_rate"] or 0) - (worst["completion_rate"] or 0) >= 5:
             add(58, "neutral", f"{best['label']} converts best, {worst['label']} worst",
-                f"{best['completion_rate']}% of {best['label']} applications disbursed, "
-                f"against {worst['completion_rate']}% for {worst['label']}.", "funnel")
+                f"{best['completion_rate']:.0f}% of {best['label']} applications disbursed, "
+                f"against {worst['completion_rate']:.0f}% for {worst['label']}.", "funnel")
 
     # Ageing open applications (all time, not just the cohort).
     old = [r for r in records if not r.closed and r.waiting_since() and _days(now - r.waiting_since()) >= 30]
@@ -948,6 +975,14 @@ def insights(records, start, end, now=None):
 
     found.sort(key=lambda i: -i["score"])
     return [_strip(i) for i in found]
+
+
+def _plain_days(value):
+    """A duration in words a card can carry: "2 days", "half a day"."""
+    if value < 0.75:
+        return "under a day" if value >= 0.4 else "a few hours"
+    days = round(value)
+    return "a day" if days == 1 else f"{days} days"
 
 
 def _strip(insight):
@@ -1008,8 +1043,12 @@ def dashboard_block(group, start, end):
         for r in disbursed if r.at["DISBURSED"] and r.at["SUBMITTED"]
     ]
 
-    months = {key: {"count": 0, "value": 0.0, "disbursed": 0, "by_product": Counter()}
+    # Per month submitted: how many there were, and where they stand today.
+    # The last three feed the trend lines behind the page's headline tiles.
+    months = {key: {"count": 0, "value": 0.0, "disbursed": 0, "in_progress": 0, "pending": 0,
+                    "rejected": 0, "by_product": Counter()}
               for key in months_between(start, end)}
+    standing = {"IN_PROGRESS": "in_progress", "PENDING": "pending", "REJECTED": "rejected"}
     for r in group:
         bucket = months.get(month_key(r))
         if bucket is not None:
@@ -1017,6 +1056,9 @@ def dashboard_block(group, start, end):
             bucket["value"] += r.amount
             bucket["disbursed"] += 1 if r.disbursed else 0
             bucket["by_product"][r.product] += 1
+            state = standing.get(STATUS_GROUPS.get(r.status, "IN_PROGRESS"))
+            if state:
+                bucket[state] += 1
 
     bands = Counter(band_of(r.amount) for r in group)
     states = Counter(r.state for r in group)
@@ -1049,6 +1091,7 @@ def dashboard_block(group, start, end):
         ],
         "monthly": [
             {"key": key, "count": m["count"], "value": m["value"], "disbursed": m["disbursed"],
+             "in_progress": m["in_progress"], "pending": m["pending"], "rejected": m["rejected"],
              "by_product": dict(m["by_product"])}
             for key, m in months.items()
         ],

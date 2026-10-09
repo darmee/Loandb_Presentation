@@ -16,25 +16,30 @@ data refreshes itself every 10 minutes.
 The period buttons (All time - the default - 12 months, 90 days, 30 days, This
 month, or any custom dates) apply to every page.
 
-| Page | What it shows (deck pages: four charts, two on top, two below) |
+| Page | What it shows |
 |---|---|
-| Overview | **All requests**: status tiles; request type comparison (pie); final outcome (pie) with a **See why...** dropdown; loan volume by product (bar - hover ranks the products and stars the highest); applications per month (per day when the period is about three months or shorter - This month, 30 days, 90 days) |
+| Overview | **All requests**: six status tiles (applications, disbursed, in progress, pending, rejected, days to disburse); request type comparison and final outcome as rings, each with its figures listed beside it, and a **See why...** dropdown; loan volume by product (hover ranks the products, the largest is starred); applications per month (per day when the period is about three months or shorter - This month, 30 days, 90 days) |
+| Daily report | The second page, and two things side by side. **Live activity**: what is happening on each loan as it happens - every step a loan reaches (submitted, reviewed, credit approved, control approved, disbursed, rejected, correction requested) with whose loan, which officer, and how long ago, read from the database every 5 seconds; a new step slides in at the top. **Day by day**: every day on which something happened, newest first - the day, the time (its first event to its last), and how many requests were submitted, reviewed, approved, disbursed and rejected. A line opens that loan's journey; a day opens everything that happened on it |
 | Monthly overview | Applications (or value) per month, loan size distribution, top states, officer performance |
 | Cashback / Public Sector | Final outcome with **See why...**, applications per month (per day for short periods; click a day for its requests), loan size distribution, top states |
-| Cash for Car | Final outcome, applications per month, loan size distribution / top states (a switch on one card), and the **Dash vs Floauto loan split** with who took the higher share per loan |
-| Daily activity | Submitted / reviewed / approved / disbursed / rejected per day (14 days on screen, slider to go back), a day-by-day table and a calendar |
+| Cash for Car | Final outcome, applications per month, loan size distribution / top states (a switch on one card), and the **Dash vs Floauto loan split** with who took the larger share on most loans |
 | Applications vs disbursements | Running totals, value requested vs disbursed |
-| Compare periods | Two date ranges side by side |
-| Top insights | Plain-language findings, last in the deck |
+| Compare periods | Two date ranges, measure by measure: a pair of bars, this period's figure and the change |
+| Top insights | The six findings that matter most, in plain language, last in the deck |
 
-**See why...** dropdown; loan volume by product (bar - hover ranks the products and stars the highest); applications per month |
-| Monthly overview | Applications per month, values requested per month, loan size distribution, top states, officer performance |
-| Cashback / Cash for Car / Public Sector | The same tiles, final outcome with **See why...**, applications per month, loan size distribution and top states, for one product. Cash for Car adds the **Dash vs Floauto loan split** and how many loans each took the higher share on |
-| Daily activity | Submitted / reviewed / approved / disbursed / rejected per day (14 days on screen, slider to go back), a day-by-day table and a calendar |
-| Applications vs disbursements | Daily applications against disbursements, running totals, value requested vs disbursed |
-| Loan journey | Search any request and follow it step by step |
-| Compare periods | Two date ranges side by side |
-| Top insights | Plain-language findings, last in the deck |
+### Reading the charts
+
+* **Every bar carries its number.** Rankings (loan size, states, officers)
+  put the value at the end of the bar.
+* **A ring has no labels on it**, only the total in the middle. Its figures
+  are listed beside it: a row per slice with the slice's colour, its name,
+  its number and its share. A row does what its slice does (opens the
+  requests, or the product's page), and hovering one lights the other up.
+* **A tile's number has its trend behind it**: the requests submitted each
+  month that are in that state today.
+* **Compare periods** is a row per measure - a pair of bars, this period's
+  figure and the change - and **Top insights** keeps to six cards of three
+  figures at most (a test fails if one grows a fourth).
 
 **See why...** - every status tile, pie slice, legend row and the dropdown
 open the list of requests behind them, topped by a breakdown of *why*: the
@@ -83,14 +88,111 @@ Disbursed 8, Rejected 2").
   `Record`s loaded per request (one query per product). Unit-tested without a
   database in `loans/tests/test_journey.py`.
 * `loans/views.py` - the page and the JSON endpoints under `/api/`.
+* `loans/live.py` - the daily report's live feed (`/api/live/`). Unlike
+  everything in `journey.py`, it does not load every application: it is asked
+  every 5 seconds, so it goes to the database for only the applications
+  something has happened to since the page last asked - three small queries,
+  one per product, usually returning nothing.
 * `templates/loans/presentation.html`, `static/js/presentation.js`,
   `static/css/app.css` - the page. Charts are ECharts 5.6, vendored into
   `static/vendor/echarts/` so nothing loads from a CDN.
+* `static/js/ui.js` - the motion and smooth scrolling every page shares
+  (see below).
+
+### Look and motion
+
+The brand colour is `#4f1a60`. The navigation rail down the left is always
+that purple, in both themes, and so is the head of the drawer; everywhere
+else it appears as the accent (a lighter tint in dark mode, where the colour
+itself is too dark to read as text). Chart colours are separate and
+deliberately unchanged - a colour there identifies one thing (a product, an
+outcome, an event) on every page.
+
+The pages are glass panels floating over an "aurora": three soft lights in
+the brand's hues that drift slowly behind everything. The aurora is plain CSS
+animation on the compositor, so a screen left on all day spends no script
+time on it. On a screen narrower than 1440px the rail folds to icons (hover
+for the name); on a phone it becomes a strip of tabs across the top.
+
+* **Tiles** show one number; behind it runs its trend, month by month.
+* **Pies are rings** with the total in the middle.
+* **Ctrl+K** (or `/`, or the search box) opens the command palette: type a
+  name or reference to find any request and open its journey, or jump to a
+  page, a period, or an action. This is the only search in the application.
+* **F** (or the button) goes full screen; **left / right** change page; the
+  ring around the play button counts down to the next page during auto-play.
+
+| Library | Version | Where | What it does here |
+|---|---|---|---|
+| Tailwind CSS | 4.3 | build tool; output is `static/css/app.css` | the stylesheet: theme tokens, components, and utility classes in the templates |
+| Motion | 14 | `static/vendor/motion/` | panels grow into place and their headline numbers count up, the selected page and every switch sit on a sliding pill, the drawer and the command palette spring in, auto-play shows its countdown |
+| Lenis | 1.3 | `static/vendor/lenis/` | smooth scrolling in the drawer, the command palette, the tables, the sign-in and error pages, and the whole page on a phone |
+| Inter | 5.3 (variable) | `static/vendor/inter/` | the text typeface |
+| Space Grotesk | 5.3 (variable) | `static/vendor/space-grotesk/` | headings and the headline numbers |
+
+Motion is the library Framer Motion became. Framer Motion's own API is
+React-only and this page is server-rendered HTML with plain JavaScript, so it
+is used through Motion's plain-JavaScript API (`Motion.animate`, `stagger`) -
+same engine, same springs.
+
+**The charts move.** Each one draws itself in - bars rise one after another,
+lines run left to right, rings sweep round from the top - when its page comes
+on (signing in, reloading, changing page, auto-play) and again whenever fresh
+figures arrive from the database (the 10-minute refresh, a change of period,
+new steps on the live feed), even if the figures are the same as before. On a
+refresh nothing is hidden first: the headline numbers run on from what they
+said to what they say now. This is ECharts' own animation; the timing lives
+under "chart motion" in `static/js/presentation.js`.
+
+Two things there are easy to break. A chart already on the page does nothing
+when handed the same figures again, so it is cleared before it is redrawn.
+And **resizing a chart ends its animation on the spot** - so a chart is only
+resized when its box has actually changed size (`fit()`), and anything that
+changes a chart's box (a line of text under it, the rows beside a ring) is
+written before the chart is drawn, not after.
+
+All of it is vendored for the reason ECharts is: `script-src 'self'` blocks
+any CDN. And all of it is optional: with "reduce motion" switched on in the
+operating system, or if those scripts fail to load, the page behaves the same
+with no movement (checked both ways).
+
+The desktop deck is one fixed screen, so there is no page-level smooth
+scrolling there on purpose - it would swallow the mouse wheel the charts'
+zoom sliders need. Lenis runs on the parts that do scroll.
+
+**Changing the styles.** Edit `assets/css/app.css` (not `static/css/app.css`,
+which is generated), then rebuild:
+
+    powershell -ExecutionPolicy Bypass -File scriptsuild_css.ps1
+
+Add `-Watch` to rebuild on every save. This uses Tailwind's standalone
+program, downloaded once into `tools/`, so no Node or npm is needed. Also
+rebuild after using a Tailwind class in a template or script for the first
+time: Tailwind only emits the utilities it finds. The built file is
+committed, so deploying never involves this step. The source sits outside
+`static/` because `collectstatic` tries to resolve every `@import` it finds
+and would fail on `@import "tailwindcss"`.
+
+Tailwind 4 needs a 2023-or-later browser (Chrome/Edge 111, Safari 16.4,
+Firefox 128).
 
 Loading every application per request is fine at the current few thousand
 rows (the summary endpoint answers in about half a second over 2,000). If the
 tables reach the hundreds of thousands, move the daily aggregation into SQL
 first; it is the only part that touches every row.
+
+**The live feed's cost.** While someone has the daily report on screen, their
+browser asks `/api/live/` every 5 seconds; it stops when they move to another
+page or the tab is hidden. Each question filters the three request tables on
+their seven timestamp columns, which are not indexed - instant at a few
+thousand rows. If the tables grow large, ask the origination system's owner
+for an index on `updated_at` and filter on that first. When new steps do
+arrive, the page's figures refresh as well, at most once every 20 seconds.
+
+"As it happens" means within about 5 seconds, and what counts as happening is
+a step's own timestamp on the loan (`reviewed_at`, `disbursed_at`, ...) - the
+same timestamps every other figure here is counted from - not the origination
+system's audit log.
 
 ### If the presentation shows no data
 
@@ -249,7 +351,7 @@ columns the table has that the model has missed.
 **Run this one first on the live database.** The supporting tables point at
 applications through a `(request_type, request_id)` pair rather than a foreign
 key, and if those strings are wrong nothing raises - the audit trail and comments
-on the Loan journey tab just come back empty on every application, which looks
+in a request's journey just come back empty on every application, which looks
 like "no history" rather than like a bug.
 
 This is not hypothetical. The first run against production found two of the
@@ -274,7 +376,7 @@ plus:
 - **Cookies** - HttpOnly, SameSite=Lax; `Secure` plus HSTS and an HTTPS redirect
   switch on automatically whenever `DEBUG` is off.
 - **Audit log** - `logs/audit.log` records every individual application opened
-  on the Loan journey tab (who, which application, from where) and every failed
+  in the drawer or from the search palette (who, which application, from where) and every failed
   login. Rotates at 5MB.
 
 Row visibility is currently "any authenticated user sees everything", but every
@@ -375,9 +477,16 @@ reports no issues with `DEBUG=False`.
   `textContent`; chart tooltips, the one place HTML strings are used, escape
   every value first.
 - **The API answers 401, never a login redirect,** so a session that expires
-  mid-presentation sends the viewer to sign in cleanly.
-- **No identity numbers leave the server.** The journey and drill-down
-  endpoints return name, reference, product, amount, officer and state - never
+  mid-presentation sends the viewer to sign in cleanly. It answers GET only.
+- **Nothing is left in the browser cache.** The page and every API answer are
+  sent `Cache-Control: no-store`; they carry applicant names, and a cached copy
+  would stay readable on a shared computer after signing out (the Back button
+  would show the dashboard again).
+- **No placeholder secret key outside development.** With `DJANGO_DEBUG` off,
+  the application refuses to start if `DJANGO_SECRET_KEY` is missing or still
+  `change-me` - that key signs the session cookie.
+- **No identity numbers leave the server.** The journey, drill-down and
+  live-feed endpoints return name, reference, product, amount, officer and state - never
   BVN, NIN, date of birth, phone, email, address or account numbers.
 - Headers on every response: `X-Frame-Options: DENY` and `frame-ancestors
   'none'` (the presentation no longer uses iframes), `X-Content-Type-Options:
@@ -395,14 +504,21 @@ reports no issues with `DEBUG=False`.
    journey search. That matches the old portal, and journey views are audited,
    but if presentation viewers should not see names, mask them in
    `Record.summary()` and `api_journey`.
+4. **An open dashboard never signs itself out.** The page refreshes its data
+   every 10 minutes (and the daily report asks every 5 seconds), and each
+   request renews the 8-hour session, so the
+   "sessions expire after 8 hours" rule only applies once the tab is closed.
+   That suits a screen on a wall; on a desk it means an unlocked computer is
+   a signed-in dashboard. If that matters, give the session a fixed lifetime
+   from sign-in instead of a sliding one.
 
 ## Tests
 
     .venv/bin/python manage.py test loans
 
-59 tests covering the read-only guarantee, the status derivation across all 64
-flag combinations, sign-in and API access control, the security headers, and
-the journey analyses (funnel monotonicity, every lost applicant accounted for
+80 tests covering the read-only guarantee, the status derivation across all 64
+flag combinations, sign-in and API access control, the security headers and cache rules, the
+live feed, and the journey analyses (funnel monotonicity, every lost applicant accounted for
 at a gate, Lagos-day bucketing, reason grouping, drill-down lists matching the
 chart numbers). The loan tables are unmanaged, so `loans/tests/base.py` builds
 them from the model definitions and truncates them between tests - Django's own

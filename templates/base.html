@@ -5,37 +5,49 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
 <meta name="color-scheme" content="dark light">
-<title>{% block title %}Loan Journey{% endblock %} &middot; DashMFB</title>
+<meta name="theme-color" content="#4f1a60">
+<title>{% block title %}Loan Dashboard{% endblock %} &middot; DashMFB</title>
 <link rel="icon" href="{% static 'img/favicon.ico' %}" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-32.png' %}">
 <link rel="apple-touch-icon" href="{% static 'img/apple-touch-icon.png' %}">
 {# Runs before first paint so a light-mode user never sees a dark flash. #}
 <script src="{% static 'js/theme.js' %}?v={{ asset_version }}"></script>
+<link rel="preload" href="{% static 'vendor/inter/inter-latin-wght-normal.woff2' %}" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="{% static 'vendor/space-grotesk/space-grotesk-latin-wght-normal.woff2' %}" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{% static 'css/app.css' %}?v={{ asset_version }}">
+{# Motion (animation) and Lenis (smooth scrolling), then the helpers every page shares. #}
+<script src="{% static 'vendor/motion/motion.min.js' %}?v={{ asset_version }}" defer></script>
+<script src="{% static 'vendor/lenis/lenis.min.js' %}?v={{ asset_version }}" defer></script>
+<script src="{% static 'js/ui.js' %}?v={{ asset_version }}" defer></script>
 {% block head %}{% endblock %}
 </head>
 <body class="{% block body_class %}page{% endblock %}">
+{# The aurora: three soft lights in the brand's hues, drifting behind every page. #}
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
 {% block body %}
-<header class="appbar">
-  <a class="brand" href="/">
-    <span class="plate"><img src="{% static 'img/logo.png' %}" alt="DashMFB"></span>
-    <span class="brand-name">Loan Journey</span>
-  </a>
-  <div class="appbar-right">
-    <button type="button" class="icon-btn" data-theme-toggle title="Switch light/dark" aria-label="Switch between light and dark mode">
-      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z"/></svg>
-    </button>
-    {% if user.is_authenticated %}
-    <span class="who">{{ user.get_username }}</span>
-    <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn btn-ghost">Sign out</button></form>
-    {% endif %}
-  </div>
-</header>
-<main class="wrap">
-  {% if sample %}<div class="banner">Showing fabricated sample data &mdash; not the live loan database.</div>{% endif %}
-  {% block content %}{% endblock %}
-  <footer class="foot">DashMFB Loan Journey &middot; read-only</footer>
-</main>
+<div class="page-shell">
+  <header class="page-top" data-reveal>
+    <a class="brand" href="/">
+      <span class="plate"><img src="{% static 'img/logo.png' %}" alt="DashMFB"></span>
+      <span class="brand-name">Loan Dashboard<small>DashMFB</small></span>
+    </a>
+    <div class="tools">
+      <button type="button" class="icon-btn" data-theme-toggle title="Switch light/dark" aria-label="Switch between light and dark mode">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
+      </button>
+      {% if user.is_authenticated %}
+      <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit" class="btn">Sign out</button></form>
+      {% endif %}
+    </div>
+  </header>
+  <main class="wrap">
+    <div class="panel-card" data-pop>
+      {% if sample %}<div class="banner">Showing fabricated sample data &mdash; not the live loan database.</div>{% endif %}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+  <footer class="foot" data-reveal>DashMFB Loan Dashboard &middot; read-only</footer>
+</div>
 {% endblock %}
 <script src="{% static 'js/theme-toggle.js' %}?v={{ asset_version }}" defer></script>
 </body>
