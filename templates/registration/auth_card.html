@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% load static %}
+{% block body_class %}page login-page{% endblock %}
+{# The forgot-password pages: the sign-in card on its own. #}
+{% block body %}
+<button type="button" class="icon-btn fixed right-5 top-5 z-10" data-theme-toggle title="Switch light/dark" aria-label="Switch between light and dark mode">
+  <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
+</button>
+<main class="login login-solo">
+  <section class="login-card" data-pop>
+    <span class="plate"><img src="{% static 'img/logo.png' %}" alt="DashMFB"></span>
+    {% block card %}{% endblock %}
+    <p class="mt-5 text-center text-sm"><a class="field-link" href="{% url 'login' %}">&larr; Back to sign in</a></p>
+  </section>
+</main>
+{% endblock %}

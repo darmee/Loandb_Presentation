@@ -851,15 +851,27 @@ def _fmt_day(day_iso):
     return date.fromisoformat(day_iso).strftime("%a %d %b")
 
 
+def _drill(label, kind, key=""):
+    """A button that lists the applications a figure was counted from."""
+    return {"label": label, "drill": {"kind": kind, "key": key}}
+
+
+def _plural(count, word):
+    return f"{count:,} {word}{'' if count == 1 else 's'}"
+
+
 def insights(records, start, end, now=None):
-    """Plain-language findings, most important first.
+    """Findings in plain words, most important first.
 
-    Each insight names the tab that explains it, so the presenter can click
-    straight through to the evidence.
+    Each one carries:
 
-    A card is read from across a room, so each one carries a figure or two
-    and no more: whole percentages and days, and the one count that gives the
-    finding its size. The page it opens has the rest.
+    * `title` - what stands out, as a sentence anyone in the room follows;
+    * `detail` - what it means, with a figure or two and no more;
+    * `why` - how it was worked out, so nobody has to take it on trust;
+    * `actions` - buttons to the evidence: the very applications the figures
+      were counted from (a drill-down whose list is as long as the card says),
+      the day in question, the two periods side by side, or the page with the
+      chart. At most two, the strongest evidence first.
     """
     now = now or timezone.now()
     found = []
@@ -870,90 +882,130 @@ def insights(records, start, end, now=None):
     prev_outcome = outcome_summary(prev_group)
     gate_rows = gates(group, now)
 
-    def add(score, tone, title, detail, tab):
-        found.append({"score": score, "tone": tone, "title": title, "detail": detail, "tab": tab})
+    def add(score, tone, title, detail, why, actions):
+        found.append({"score": score, "tone": tone, "title": title, "detail": detail, "why": why,
+                      "actions": [a for a in actions if a][:2]})
 
     if not group:
         add(100, "neutral", "No applications in this period",
-            "Nothing was submitted between these dates. Widen the date range.", "overview")
+            "Nothing was submitted between these dates.",
+            "Choose a wider date range at the top of the page.", [])
         return [_strip(i) for i in found]
 
     # Volume trend.
     if prev_group:
         change = (len(group) - len(prev_group)) * 100 / len(prev_group)
         if abs(change) >= 5:
-            add(60 + min(abs(change), 40) / 2, "good" if change > 0 else "bad",
-                f"Applications {'up' if change > 0 else 'down'} {abs(change):.0f}% on the previous period",
-                f"{len(group):,} submitted, against {len(prev_group):,} in the period before.",
-                "compare")
+            more = change > 0
+            add(60 + min(abs(change), 40) / 2, "good" if more else "bad",
+                f"{'More' if more else 'Fewer'} people applied than in the period before",
+                f"{len(group):,} applications, against {len(prev_group):,} before: "
+                f"{abs(change):.0f}% {'more' if more else 'fewer'}.",
+                "Applications are counted on the day they were submitted, and set against "
+                "the same number of days just before this period.",
+                [{"label": "Compare the two periods", "compare": {
+                    "a": [start.isoformat(), end.isoformat()],
+                    "b": [prev_start.isoformat(), prev_end.isoformat()]}},
+                 _drill(f"See the {_plural(len(group), 'application')}", "all")])
 
     # Biggest drop-off.
     lossy = max(gate_rows, key=lambda g: g["lost"])
     if lossy["lost"]:
-        add(90, "bad", f"Most applicants are lost at {lossy['label']}",
-            f"{lossy['lost']:,} of the {lossy['arrived']:,} who reached it were rejected there, "
-            f"or have been stuck for over {STALLED_DAYS} days.",
-            "funnel")
+        add(90, "bad", f"Most applications fall through at {lossy['label']}",
+            f"Of the {lossy['arrived']:,} that reached it, {lossy['lost']:,} were turned down there "
+            f"or have sat there for over {STALLED_DAYS} days.",
+            "Every step from review to disbursement is checked for how many applications it "
+            "turns down or leaves waiting; this step loses the most.",
+            [_drill(f"See the {lossy['lost']:,} that fell through", "gate_lost", lossy["gate"])])
 
     # Bottleneck by time.
     slow = max(gate_rows, key=lambda g: g["median_days"] or 0)
     if slow["median_days"]:
-        others = [g["median_days"] for g in gate_rows if g is not slow and g["median_days"]]
         add(85, "bad" if slow["median_days"] >= 3 else "neutral",
-            f"{slow['label']} is the slowest step",
-            f"It typically takes {_plain_days(slow['median_days'])}, and "
-            f"{slow['waiting']:,} applications are waiting there now.", "funnel")
+            f"Applications wait longest at {slow['label']}",
+            f"Getting through it usually takes {_plain_days(slow['median_days'])}, and "
+            f"{slow['waiting']:,} are waiting there now.",
+            "\"Usually\" is the middle value: of the applications that got through this step, "
+            "half took less time and half took more.",
+            [_drill("See how long each took", "gate_passed", slow["gate"]),
+             _drill(f"See the {slow['waiting']:,} waiting", "gate_waiting", slow["gate"])
+             if slow["waiting"] else None])
 
     # Completion rate.
-    if outcome["completion_rate"] is not None:
+    rate = outcome["completion_rate"]
+    if rate is not None:
         prev = prev_outcome["completion_rate"]
-        # The previous cohort has had a whole period longer to finish, so a
-        # lower rate now is expected and is not on its own bad news; a higher
-        # one is.
-        delta = (
-            f" The period before stands at {prev:.0f}%, having had longer to complete."
-            if prev is not None else ""
-        )
-        tone = "good" if prev is not None and outcome["completion_rate"] > prev + 2 else "neutral"
-        add(80, tone, f"{outcome['completion_rate']:.0f}% of applications have been disbursed",
-            f"{outcome['in_progress']:,} are still in progress.{delta}", "funnel")
+        one_in = round(100 / rate) if rate else None
+        if not rate:
+            title = "None of these applications has been paid out yet"
+        elif rate < 50 and 2 <= one_in <= 20:
+            title = f"About 1 in {one_in} applications has been paid out"
+        else:
+            title = f"{rate:.0f}% of applications have been paid out"
+        # The period before has had longer to finish, so a lower rate now is
+        # expected and is not on its own bad news; a higher one is.
+        before = (f" The period before stands at {prev:.0f}%, having had longer to finish."
+                  if prev is not None else "")
+        waiting = outcome["in_progress"]
+        add(80, "good" if prev is not None and rate > prev + 2 else "neutral", title,
+            (f"Another {waiting:,} {'is' if waiting == 1 else 'are'} still on the way through the steps."
+             if waiting else "Every other application has been closed."),
+            f"Out of the applications submitted in this period, how many have been paid out so far.{before}",
+            [_drill(f"See the {outcome['disbursed']:,} paid out", "outcome", "DISBURSED"),
+             _drill(f"See the {waiting:,} still in progress", "outcome", "IN_PROGRESS") if waiting else None])
 
     # Top rejection reason.
     rej = rejections(records, start, end)
     if rej["total"] and rej["categories"]:
         top = rej["categories"][0]
-        add(75, "bad", f"{top['label']} drives {top['pct']:.0f}% of rejections",
-            f"Most rejections happen at {max(rej['by_stage'], key=lambda s: s['count'])['label']}.",
-            "rejections")
+        stage = max(rej["by_stage"], key=lambda s: s["count"])
+        add(75, "bad", f"\"{top['label']}\" is the most common reason for turning applications down",
+            f"{top['count']:,} of the {rej['total']:,} rejections in this period, mostly at {stage['label']}.",
+            "Each reason the team typed when rejecting is sorted into a group by its wording; "
+            "this group comes up most often.",
+            [_drill(f"See the {top['count']:,} rejected for this", "rejection_category", top["key"])])
 
     # Corrections.
     corr = corrections(records, start, end, now)
     a, c = corr["outcome_corrected"], corr["outcome_clean"]
     if corr["corrected"] and a["median_days_to_disburse"] and c["median_days_to_disburse"]:
         extra = a["median_days_to_disburse"] - c["median_days_to_disburse"]
-        add(70, "bad" if extra > 1 else "neutral",
-            f"Corrections add {_plain_days(extra)} to a loan",
-            f"{corr['corrected_pct']:.0f}% of applications were sent back at least once, "
-            f"and {corr['open_now']:,} are waiting on the applicant now.", "corrections")
+        if extra >= 0.4:
+            add(70, "bad" if extra > 1 else "neutral",
+                f"Sending an application back for corrections delays it by {_plain_days(extra)}",
+                f"{corr['corrected_pct']:.0f}% of applications were sent back at least once, and "
+                f"{corr['open_now']:,} are waiting on the applicant now.",
+                "Compares how long applications took to be paid out when they were sent back for "
+                "corrections with when they were not (the middle value of each).",
+                [_drill("See the sent-back ones", "time_to_pay", "corrected"),
+                 _drill("See the others", "time_to_pay", "clean")])
 
     # Inflow vs outflow.
     flows = flow(records, start, end)
+    closed = flows["total_disbursed"] + flows["total_rejected"]
+    why_flow = ("Counts what came in each day against what was closed - paid out or turned down - "
+                "over the same days.")
+    to_flow = {"label": "Open Applications vs disbursements", "tab": "flow"}
     if flows["net_backlog_change"] > 0 and flows["total_submitted"]:
-        add(65, "bad", "Applications are coming in faster than they are closed",
-            f"{flows['total_submitted']:,} came in; "
-            f"{flows['total_disbursed'] + flows['total_rejected']:,} were disbursed or rejected.", "flow")
+        add(65, "bad", "Work is piling up: more came in than was finished",
+            f"{flows['total_submitted']:,} applications came in; {closed:,} were paid out or turned down.",
+            why_flow, [to_flow])
     elif flows["net_backlog_change"] < 0:
-        add(55, "good", "More applications closed than came in",
-            f"{flows['total_disbursed'] + flows['total_rejected']:,} were disbursed or rejected, against "
-            f"{flows['total_submitted']:,} new applications.", "flow")
+        add(55, "good", "The team is clearing the queue: more was finished than came in",
+            f"{closed:,} applications were paid out or turned down, against {flows['total_submitted']:,} new ones.",
+            why_flow, [to_flow])
 
     # Busiest day.
     days = flows["days"]
-    if days:
-        busiest = max(days, key=lambda d: d["submitted"])
-        if busiest["submitted"]:
-            add(50, "neutral", f"Busiest day: {_fmt_day(busiest['date'])}",
-                f"{busiest['submitted']} applications came in that day.", "daily")
+    busy_days = [d["submitted"] for d in days if d["submitted"]]
+    busiest = max(days, key=lambda d: d["submitted"]) if busy_days else None
+    typical = max(1, round(median(busy_days))) if busy_days else None
+    # Worth a card only when that day stood out from the rest.
+    if busiest and busiest["submitted"] >= max(typical * 1.5, typical + 2):
+        add(50, "neutral", f"{_fmt_day(busiest['date'])} was the busiest day",
+            f"{_plural(busiest['submitted'], 'application')} came in, against about {typical:,} on a typical day.",
+            "A typical day is the middle value across the days on which anything was submitted.",
+            [{"label": "See what happened that day", "day": busiest["date"]}])
 
     # Product conversion spread.
     products = [p for p in by_product(group) if p["submitted"] >= 10]
@@ -961,20 +1013,36 @@ def insights(records, start, end, now=None):
         best = max(products, key=lambda p: p["completion_rate"] or 0)
         worst = min(products, key=lambda p: p["completion_rate"] or 0)
         if (best["completion_rate"] or 0) - (worst["completion_rate"] or 0) >= 5:
-            add(58, "neutral", f"{best['label']} converts best, {worst['label']} worst",
-                f"{best['completion_rate']:.0f}% of {best['label']} applications disbursed, "
-                f"against {worst['completion_rate']:.0f}% for {worst['label']}.", "funnel")
+            add(58, "neutral", f"{best['label']} applications are the most likely to be paid out",
+                f"{best['completion_rate']:.0f}% of them were paid out, against "
+                f"{worst['completion_rate']:.0f}% for {worst['label']}.",
+                "For each product, how many of the applications submitted in this period have been "
+                "paid out so far. Products with fewer than 10 applications are left out.",
+                [{"label": f"Open {worst['label']}", "tab": f"product-{worst['key']}"},
+                 {"label": f"Open {best['label']}", "tab": f"product-{best['key']}"}])
 
     # Ageing open applications (all time, not just the cohort).
-    old = [r for r in records if not r.closed and r.waiting_since() and _days(now - r.waiting_since()) >= 30]
+    old = _stale(records, now)
     if old:
-        gate_counts = Counter(r.current_gate for r in old)
-        gate, n = gate_counts.most_common(1)[0]
-        add(68, "bad", f"{len(old):,} open applications untouched for 30+ days",
-            f"{n:,} of them are waiting at {GATE_LABELS[gate]}. Consider closing or chasing them.", "funnel")
+        gate, n = Counter(r.current_gate for r in old).most_common(1)[0]
+        add(68, "bad", f"{_plural(len(old), 'open application')} {'has' if len(old) == 1 else 'have'} "
+            f"not moved in over {STALE_DAYS} days",
+            f"{n:,} of them are waiting at {GATE_LABELS[gate]}, more than at any other step.",
+            "Applications still open, from any date, whose last step was more than "
+            f"{STALE_DAYS} days ago. Worth chasing or closing.",
+            [_drill(f"See the {_plural(len(old), 'application')}", "stale")])
 
     found.sort(key=lambda i: -i["score"])
     return [_strip(i) for i in found]
+
+
+STALE_DAYS = 30
+
+
+def _stale(records, now):
+    """Open applications, from any date, that have not moved for STALE_DAYS."""
+    return [r for r in records
+            if not r.closed and r.waiting_since() and _days(now - r.waiting_since()) >= STALE_DAYS]
 
 
 def _plain_days(value):
@@ -1145,6 +1213,7 @@ def drill(records, kind, key, start, end, now=None):
     now = now or timezone.now()
     group = cohort(records, start, end)
     title, chosen, extra = "", [], None
+    gate_span = None
 
     if kind == "milestone" and key in MILESTONE_KEYS:
         index = MILESTONE_KEYS.index(key)
@@ -1154,15 +1223,24 @@ def drill(records, kind, key, start, end, now=None):
         index = MILESTONE_KEYS.index(key)
         chosen = [r for r in group if r.furthest == index - 1]
         title = f"Did not reach {MILESTONE_LABELS[key]}"
-    elif kind in ("gate_rejected", "gate_waiting", "gate_fresh", "gate_stalled", "gate_passed") and key in GATES:
+    elif kind in ("gate_rejected", "gate_waiting", "gate_fresh", "gate_stalled", "gate_passed",
+                  "gate_lost") and key in GATES:
         index = GATES.index(key)
         arrived = [r for r in group if r.furthest >= index]
-        if kind == "gate_rejected":
+        if kind == "gate_lost":
+            # As gates() counts "lost": turned down here, or stuck here for STALLED_DAYS.
+            chosen = [r for r in arrived
+                      if (r.rejected and r.rejected_gate == key)
+                      or (r.current_gate == key and r.waiting_since()
+                          and _days(now - r.waiting_since()) >= STALLED_DAYS)]
+            title = f"Fell through at {GATE_LABELS[key]}"
+        elif kind == "gate_rejected":
             chosen = [r for r in arrived if r.rejected and r.rejected_gate == key]
             title = f"Rejected at {GATE_LABELS[key]}"
         elif kind == "gate_passed":
             chosen = [r for r in arrived if r.furthest >= index + 1]
             title = f"Cleared {GATE_LABELS[key]}"
+            gate_span = (MILESTONE_KEYS[index], MILESTONE_KEYS[index + 1])
         else:
             chosen = [r for r in arrived if r.current_gate == key]
             if kind == "gate_stalled":
@@ -1173,7 +1251,7 @@ def drill(records, kind, key, start, end, now=None):
                 title = f"Waiting at {GATE_LABELS[key]} (under {STALLED_DAYS} days)"
             else:
                 title = f"Waiting at {GATE_LABELS[key]}"
-        extra = "wait"
+        extra = "took" if kind == "gate_passed" else "lost" if kind == "gate_lost" else "wait"
     elif kind.startswith("rejection_"):
         rejected = [
             r for r in records
@@ -1220,6 +1298,15 @@ def drill(records, kind, key, start, end, now=None):
             chosen = [r for r in records if r.correction_at and local_date(r.correction_at).isoformat() == key]
             title = f"Corrections requested on {key}"
         extra = "correction"
+    elif kind == "stale":
+        chosen = _stale(records, now)
+        title = f"Open, no movement for {STALE_DAYS}+ days"
+        extra = "wait"
+    elif kind == "time_to_pay" and key in ("corrected", "clean"):
+        sent_back = key == "corrected"
+        chosen = [r for r in group if r.disbursed and bool(r.correction_count) == sent_back]
+        title = "Paid out after being sent back for corrections" if sent_back else "Paid out without corrections"
+        extra = "paid"
     elif kind == "group" and key in dict(STATUS_GROUP_LABELS):
         chosen = [r for r in group if STATUS_GROUPS.get(r.status, "IN_PROGRESS") == key]
         title = dict(STATUS_GROUP_LABELS)[key]
@@ -1260,7 +1347,17 @@ def drill(records, kind, key, start, end, now=None):
     for r in sorted(chosen, key=lambda r: r.at["SUBMITTED"] or now, reverse=True):
         row = r.summary()
         if extra == "wait":
-            row["detail"] = f"Waiting {_days(now - r.waiting_since()):.1f} days" if not r.closed else ""
+            row["detail"] = (f"Waiting {_days(now - r.waiting_since()):.1f} days at {GATE_LABELS[r.current_gate]}"
+                             if not r.closed and r.waiting_since() else "")
+        elif extra == "took":
+            begin, finish = (r.at[k] for k in gate_span)
+            row["detail"] = f"Took {_days(finish - begin):.1f} days" if begin and finish and finish >= begin else ""
+        elif extra == "lost":
+            row["detail"] = (f"Turned down: {r.rejection_reason or '(no reason recorded)'}" if r.rejected
+                             else f"Stuck {_days(now - r.waiting_since()):.0f} days")
+        elif extra == "paid":
+            begin, finish = r.at["SUBMITTED"], r.at["DISBURSED"]
+            row["detail"] = f"Paid out {_days(finish - begin):.1f} days after applying" if begin and finish else ""
         elif extra == "rejection":
             row["detail"] = r.rejection_reason or "(no reason recorded)"
         elif extra == "correction":

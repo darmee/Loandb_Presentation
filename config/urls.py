@@ -3,6 +3,8 @@ from django.contrib.auth import views as auth_views
 from django.http import HttpResponse
 from django.urls import include, path
 
+from loans.password_reset import ResetConfirmView, ResetRequestView
+
 
 def robots_txt(request):
     """Disallow every crawler across the whole site."""
@@ -20,5 +22,10 @@ urlpatterns = [
         name="login",
     ),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
+    # Forgot password: request a link, "check your email", set a new one, done.
+    path("password-reset/", ResetRequestView.as_view(), name="password_reset"),
+    path("password-reset/sent/", auth_views.PasswordResetDoneView.as_view(), name="password_reset_done"),
+    path("password-reset/done/", auth_views.PasswordResetCompleteView.as_view(), name="password_reset_complete"),
+    path("password-reset/<uidb64>/<token>/", ResetConfirmView.as_view(), name="password_reset_confirm"),
     path("", include("loans.urls")),
 ]

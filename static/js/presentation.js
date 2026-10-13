@@ -1571,17 +1571,43 @@
 
   const INSIGHT_LIMIT = 6;   // the six that matter most, at a size that reads across a room
 
+  /* Each card: what stands out, what it means, how it was worked out, and
+     buttons to the evidence - the applications behind the figures, the day,
+     the two periods side by side, or the page with the chart. */
   function renderInsights(d) {
-    $("insights-sub").textContent = "What stands out. Click a card to open the page behind it.";
+    $("insights-sub").textContent = `What stands out in ${periodText()}, in plain words. Each card says how it was worked out; its buttons open the applications behind it.`;
     const list = d.insights.slice(0, INSIGHT_LIMIT);
-    $("insights").replaceChildren(...(list.length ? list.map((i, n) => h(i.tab ? "button" : "div", {
-      type: i.tab ? "button" : null, class: `insight ${i.tone}${i.tab ? "" : " static"}`, onclick: i.tab ? () => selectTab(i.tab) : null,
-    }, h("div", { class: "insight-top" },
+    $("insights").replaceChildren(...(list.length ? list.map((i, n) => h("article", { class: `insight ${i.tone}` },
+      h("div", { class: "insight-top" },
         h("span", { class: "insight-icon", text: i.tone === "bad" ? "!" : i.tone === "good" ? "↑" : "i" }),
         h("span", { class: "insight-rank", text: String(n + 1).padStart(2, "0") })),
       h("div", { class: "insight-title", text: i.title }),
       h("div", { class: "insight-detail", text: i.detail }),
-      i.tab ? h("div", { class: "insight-link", text: `Open ${tabName(i.tab)} →` }) : null)) : [h("div", { class: "empty", text: "Nothing notable in this period." })]));
+      i.why ? h("p", { class: "insight-why" }, h("b", { text: "How we know: " }), i.why) : null,
+      i.actions.length ? h("div", { class: "insight-actions" }, i.actions.map((act, k) => h("button", {
+        type: "button", class: `insight-act${k ? "" : " primary"}`, onclick: () => insightAction(act),
+      }, act.label, h("span", { "aria-hidden": "true", text: " →" })))) : null))
+      : [h("div", { class: "empty", text: "Nothing notable in this period." })]));
+  }
+
+  function insightAction(act) {
+    if (act.drill) openDrill(act.drill.kind, act.drill.key);
+    else if (act.day) openDay(act.day, "all");
+    else if (act.compare) showComparison(act.compare.a, act.compare.b);
+    else if (act.tab) selectTab(act.tab);
+  }
+
+  /* Open Compare periods on exactly the two periods a card compared, so the
+     figures on both match. */
+  function showComparison(a, b) {
+    state.rendered.add("compare");
+    state.compareUnit = null;
+    $("compare-quick").value = "";
+    [$("a-start").value, $("a-end").value] = a;
+    [$("b-start").value, $("b-end").value] = b;
+    document.querySelectorAll("#compare-presets button").forEach((x) => x.setAttribute("aria-pressed", "false"));
+    selectTab("compare");
+    loadCompare();
   }
   function tabName(tab) {
     // The full name; the rail may show a shorter label.

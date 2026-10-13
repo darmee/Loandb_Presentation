@@ -144,12 +144,6 @@ def presentation(request):
 
 # --- data ---------------------------------------------------------------------
 
-PAGE_TABS = {"overview", "monthly", "daily", "flow", "journey", "compare"}
-# Insights written for analysis pages that were folded away point at the page
-# that now carries that information.
-INSIGHT_TAB = {"funnel": "overview", "rejections": "overview"}
-
-
 # Big enough for any sum of naira amounts times a percentage, kept exact.
 EXACT_MONEY = DecimalField(max_digits=34, decimal_places=8)
 EARNINGS_LIMIT = 500
@@ -296,11 +290,7 @@ def api_dashboard(request):
         scopes[code] = journey.dashboard_block([r for r in group if r.product == code], start, end)
         daily[code] = journey.flow([r for r in records if r.product == code], start, end)
 
-    insight_list = []
-    for item in journey.insights(records, start, end, now):
-        tab = INSIGHT_TAB.get(item["tab"], item["tab"])
-        item["tab"] = tab if tab in PAGE_TABS else None
-        insight_list.append(item)
+    insight_list = journey.insights(records, start, end, now)
 
     return JsonResponse({
         # The page was told "today" when it loaded; one left open overnight
