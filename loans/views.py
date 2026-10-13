@@ -13,18 +13,20 @@ visibility still has exactly one definition - `LoanRequestQuerySet.visible_to`
 """
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
+from decimal import Decimal
 from functools import wraps
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db import connections
-from django.db.models import Count, DecimalField, F, Q, Sum, Value
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.db.utils import Error as DatabaseError
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from django.views.decorators.cache import never_cache
 
 from . import journey, live
@@ -148,34 +150,124 @@ PAGE_TABS = {"overview", "monthly", "daily", "flow", "journey", "compare"}
 INSIGHT_TAB = {"funnel": "overview", "rejections": "overview"}
 
 
-def _commission(user, start, end):
-    """Cash for Car's fee split between Dash and Floauto, on disbursed loans.
+# Big enough for any sum of naira amounts times a percentage, kept exact.
+EXACT_MONEY = DecimalField(max_digits=34, decimal_places=8)
+EARNINGS_LIMIT = 500
 
-    Counted on disbursed loans only - a pending or rejected request has not
-    paid anyone anything yet. Also: on how many loans did each party take
-    the bigger share? A missing share counts as 0. The total can be swung by
-    a few large loans; the per-loan count shows who usually comes out ahead.
+
+def _disbursed_car_loans(user, start, end, everything=False):
+    """The Cash for Car loans the Dash vs Floauto figures are counted on.
+
+    Disbursed - paid out and not rejected, the derived status DISBURSED, the
+    same rule as every other figure - and disbursed in the period, by the
+    Lagos calendar day of `disbursed_at`, because that is when the money is
+    earned. All time takes every disbursed loan, including old rows with no
+    disbursement date. The card's totals and the list behind it both come
+    from here, so the list always adds up to the card.
     """
-    qs = CashForCarRequest.objects.visible_to(user).filter(
-        status="DISBURSED", created_at__date__range=(start, end)
+    loans = CashForCarRequest.objects.visible_to(user).filter(status="DISBURSED")
+    if not everything:
+        loans = loans.filter(disbursed_at__date__range=(start, end))
+    return loans
+
+
+def _naira(column):
+    """A money column, an empty one counting as 0, in exact decimals."""
+    return Coalesce(F(column), Value(Decimal("0"), output_field=EXACT_MONEY), output_field=EXACT_MONEY)
+
+
+def _earned(share_column):
+    """What one party earned on one loan: loan amount x its share % / 100."""
+    return ExpressionWrapper(
+        _naira("loan_amount") * _naira(share_column) / Value(Decimal("100"), output_field=EXACT_MONEY),
+        output_field=EXACT_MONEY,
     )
-    zero = Value(0, output_field=DecimalField())
-    totals = qs.aggregate(dash=Sum("fee_dash_share"), floauto=Sum("fee_floauto_share"))
-    per_loan = qs.annotate(
-        _dash=Coalesce("fee_dash_share", zero), _floauto=Coalesce("fee_floauto_share", zero)
-    ).aggregate(
-        dash_higher=Count("pk", filter=Q(_dash__gt=F("_floauto"))),
-        floauto_higher=Count("pk", filter=Q(_floauto__gt=F("_dash"))),
-        equal=Count("pk", filter=Q(_floauto=F("_dash"))),
+
+
+def _commission(user, start, end, everything=False):
+    """What Dash and Floauto earned on the Cash for Car loans disbursed in a period.
+
+    `fee_dash_share` and `fee_floauto_share` are percentages of the loan
+    (1.5 means 1.5%). Each party earns its share when the loan is paid out,
+    so on one loan:
+
+        Dash earned    = loan amount x fee_dash_share    / 100
+        Floauto earned = loan amount x fee_floauto_share / 100
+
+    and over the period, those added up across every loan disbursed in it
+    (which loans: see _disbursed_car_loans).
+
+    A share left empty counts as 0% - that loan earned nobody anything on
+    paper - and `missing_shares` says how many loans that was, so a gap in the
+    data is visible instead of quietly lowering the totals. The insurance
+    share (`fee_insurance_share`) belongs to neither party and is left out.
+
+    The arithmetic is done by the database in exact decimals, not floats.
+    """
+    totals = _disbursed_car_loans(user, start, end, everything).aggregate(
+        loans=Count("pk"),
+        value=Sum(_naira("loan_amount")),
+        dash=Sum(_earned("fee_dash_share")),
+        floauto=Sum(_earned("fee_floauto_share")),
+        missing_shares=Count("pk", filter=Q(fee_dash_share__isnull=True) | Q(fee_floauto_share__isnull=True)),
     )
+    value = totals["value"] or Decimal(0)
+    dash = totals["dash"] or Decimal(0)
+    floauto = totals["floauto"] or Decimal(0)
+
+    def average_share(earned_amount):
+        # What each one earned as a percentage of everything disbursed: their
+        # share on an average naira lent, bigger loans weighing more.
+        return float(earned_amount * 100 / value) if value else None
+
     return {
-        "loans": qs.count(),
-        "dash": float(totals["dash"] or 0),
-        "floauto": float(totals["floauto"] or 0),
-        "dash_higher": per_loan["dash_higher"],
-        "floauto_higher": per_loan["floauto_higher"],
-        "equal": per_loan["equal"],
+        "loans": totals["loans"],              # how many loans were disbursed
+        "value": float(value),                 # naira disbursed on them
+        "dash": float(dash),                   # naira Dash earned
+        "floauto": float(floauto),             # naira Floauto earned
+        "dash_share": average_share(dash),     # % of the value disbursed
+        "floauto_share": average_share(floauto),
+        "missing_shares": totals["missing_shares"],
     }
+
+
+@api_view
+def api_earnings(request):
+    """The loans behind the Dash vs Floauto card: one row per loan, with each
+    party's share and what it earned on that loan. Same period rules as the
+    dashboard; the totals are the card's own, so the two always agree.
+    """
+    everything = request.GET.get("period", "all") == "all"
+    start, end = (None, None) if everything else _window(request)
+    loans = (
+        _disbursed_car_loans(request.user, start, end, everything)
+        .annotate(_last_name=F(CashForCarRequest.LAST_NAME_FIELD),
+                  dash_earned=_earned("fee_dash_share"), floauto_earned=_earned("fee_floauto_share"))
+        .order_by(F("disbursed_at").desc(nulls_last=True), "-id")
+    )
+    count = loans.count()
+    rows = []
+    for row in loans.values("id", "reference_no", "first_name", "_last_name", "loan_amount", "disbursed_at",
+                            "fee_dash_share", "fee_floauto_share", "dash_earned", "floauto_earned")[:EARNINGS_LIMIT]:
+        share = lambda v: float(v) if v is not None else None   # noqa: E731 - None: no share recorded
+        rows.append({
+            "product": "cash-for-car",
+            "id": row["id"],
+            "reference": row["reference_no"],
+            "name": " ".join(p for p in (row["first_name"], row["_last_name"]) if p),
+            "disbursed": timezone.localtime(row["disbursed_at"]).date().isoformat() if row["disbursed_at"] else None,
+            "amount": float(row["loan_amount"] or 0),
+            "dash_share": share(row["fee_dash_share"]),
+            "dash_earned": float(row["dash_earned"] or 0),
+            "floauto_share": share(row["fee_floauto_share"]),
+            "floauto_earned": float(row["floauto_earned"] or 0),
+        })
+    return JsonResponse({
+        "totals": _commission(request.user, start, end, everything),
+        "count": count,
+        "rows": rows,
+        "truncated": count > len(rows),
+    })
 
 
 @api_view
@@ -221,7 +313,7 @@ def api_dashboard(request):
         "products": journey.product_split(group),
         "scopes": scopes,
         "daily": daily,
-        "commission": _commission(request.user, start, end),
+        "commission": _commission(request.user, start, end, everything=request.GET.get("period", "all") == "all"),
         "insights": insight_list,
     })
 
@@ -243,10 +335,16 @@ def api_live(request):
     """
     since = request.GET.get("since") or None
     if since:
+        # The page sends the browser's own form, ending in "Z". Python's
+        # datetime.fromisoformat only reads that from 3.11 on; Django's parser
+        # reads it on every version this can run on.
+        asked = since
         try:
-            since = datetime.fromisoformat(since)
+            since = parse_datetime(asked)
         except ValueError:
-            raise ValueError(f"Not a moment in time: {since!r}. Use an ISO timestamp.")
+            since = None
+        if since is None:
+            raise ValueError(f"Not a moment in time: {asked!r}. Use an ISO timestamp.")
         if timezone.is_naive(since):
             raise ValueError("`since` must carry its time zone, e.g. 2026-10-08T09:30:00+01:00.")
     try:
