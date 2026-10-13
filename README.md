@@ -22,10 +22,33 @@ month, or any custom dates) apply to every page.
 | Daily report | The second page, and two things side by side. **Live activity**: what is happening on each loan as it happens - every step a loan reaches (submitted, reviewed, credit approved, control approved, disbursed, rejected, correction requested) with whose loan, which officer, and how long ago, read from the database every 5 seconds; a new step slides in at the top. **Day by day**: every day on which something happened, newest first - the day, the time (its first event to its last), and how many requests were submitted, reviewed, approved, disbursed and rejected. A line opens that loan's journey; a day opens everything that happened on it |
 | Monthly overview | Applications (or value) per month, loan size distribution, top states, officer performance |
 | Cashback / Public Sector | Final outcome with **See why...**, applications per month (per day for short periods; click a day for its requests), loan size distribution, top states |
-| Cash for Car | Final outcome, applications per month, loan size distribution / top states (a switch on one card), and the **Dash vs Floauto loan split** with who took the larger share on most loans |
+| Cash for Car | Final outcome, applications per month, loan size distribution / top states (a switch on one card), and **Dash vs Floauto earnings**: how many loans were disbursed in the period, their value, and what each party earned on them, split in a ring. `fee_dash_share` and `fee_floauto_share` are percentages of the loan, so each earns `loan amount x share / 100` on every loan disbursed in the period (by disbursement date; see `_commission` in `loans/views.py`) |
 | Applications vs disbursements | Running totals, value requested vs disbursed |
-| Compare periods | Two date ranges, measure by measure: a pair of bars, this period's figure and the change |
+| Compare periods | Two periods measure by measure: a pair of bars, both figures and the change from B to A (see "Comparing periods" below) |
 | Top insights | The six findings that matter most, in plain language, last in the deck |
+
+### Comparing periods
+
+Period A is any dates (or a **Quick pick**: this month, last month, this or
+last quarter, this or last year). Period B follows it:
+
+* **Previous period** - the calendar period before. For whole months it is
+  the same number of whole months before (Q3, 1 Jul - 30 Sep, against Q2,
+  1 Apr - 30 Jun); for a period still running, the same days of the one
+  before (1 - 12 Oct against 1 - 12 Jul); for any other dates, the same
+  number of days just before.
+* **Month before** / **Year before** - the same dates a month or a year
+  earlier, kept inside the month (31 March, a month back, is the last day of
+  February).
+
+Period B can also be typed in by hand. Applications, disbursed, rejected and
+value count what happened on each day of a period; completion rate follows
+that period's own applications to today. The chart compares the periods day
+by day for up to a month, week by week up to two months, and calendar month
+by calendar month beyond, so two quarters are three months against three.
+
+The Dash vs Floauto card on the Cash for Car page opens the loans behind it:
+for each, the amount disbursed, each party's share and what it earned.
 
 ### Reading the charts
 
@@ -516,7 +539,7 @@ reports no issues with `DEBUG=False`.
 
     .venv/bin/python manage.py test loans
 
-80 tests covering the read-only guarantee, the status derivation across all 64
+86 tests covering the read-only guarantee, the status derivation across all 64
 flag combinations, sign-in and API access control, the security headers and cache rules, the
 live feed, and the journey analyses (funnel monotonicity, every lost applicant accounted for
 at a gate, Lagos-day bucketing, reason grouping, drill-down lists matching the

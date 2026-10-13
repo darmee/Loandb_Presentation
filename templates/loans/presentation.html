@@ -191,7 +191,8 @@
           <div class="chart" id="ch-dist-{{ p.code }}"></div>
         </div>
         <div class="card">
-          <div class="card-head"><h3>Loan split &mdash; Dash vs Floauto <span class="muted">(disbursed)</span></h3></div>
+          <div class="card-head"><h3>Dash vs Floauto &mdash; earned <span class="muted">(on loans disbursed)</span></h3><span class="hint">Click for each loan</span></div>
+          <div class="split-stats" id="split-stats"></div>
           <div class="pie-body"><div class="chart" id="ch-split-pie"></div><div class="legend" id="lg-split-pie"></div></div>
           <div class="split-foot" id="split-foot"></div>
         </div>
@@ -235,6 +236,16 @@
       <div class="deck-head">
         <div class="deck-title"><h1>Compare periods</h1><p class="sub">Two date ranges side by side.</p></div>
         <div class="compare-controls">
+          <label class="period"><span class="period-tag">Quick pick</span>
+            <select class="input" id="compare-quick" aria-label="Pick Period A">
+              <option value="">Choose…</option>
+              <option value="this-month">This month so far</option>
+              <option value="last-month">Last month</option>
+              <option value="this-quarter">This quarter so far</option>
+              <option value="last-quarter">Last quarter</option>
+              <option value="this-year">This year so far</option>
+              <option value="last-year">Last year</option>
+            </select></label>
           <div class="period"><span class="period-tag"><i id="tag-a"></i>Period A</span>
             <span class="range-inputs"><input class="input" type="date" id="a-start" aria-label="Period A from"><span class="muted">to</span><input class="input" type="date" id="a-end" aria-label="Period A to"></span></div>
           <div class="period"><span class="period-tag"><i id="tag-b"></i>Period B</span>
@@ -249,7 +260,7 @@
       <div class="deck-grid compare-grid">
         <div class="card card-scroll"><div class="cmp-list" id="compare-list"></div></div>
         <div class="card">
-          <div class="card-head"><h3>Day by day</h3><div class="seg" id="compare-metric" role="group" aria-label="Metric">
+          <div class="card-head"><h3 id="compare-chart-title">By day</h3><div class="seg" id="compare-metric" role="group" aria-label="Metric">
             <button type="button" data-metric="submitted" aria-pressed="true">Submitted</button>
             <button type="button" data-metric="disbursed">Disbursed</button>
             <button type="button" data-metric="rejected">Rejected</button>

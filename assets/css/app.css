@@ -321,7 +321,7 @@
     color: var(--accent); padding: 6px 12px; border-radius: 999px; background: var(--accent-wash); box-shadow: 0 0 0 1px var(--accent-line) inset;
   }
   .login-pitch .eyebrow i { width: 7px; height: 7px; border-radius: 50%; background: #2fd16b; animation: live-pulse 1.8s infinite; }
-  .login-pitch h1 { font-size: clamp(36px, 5.6vw, 74px); line-height: .98; letter-spacing: -.045em; font-weight: 650; margin-top: 22px; }
+  .login-pitch h1 { font-size: clamp(26px, 3.4vw, 44px); line-height: .98; letter-spacing: -.045em; font-weight: 650; margin-top: 22px; }
   .login-pitch h1 em {
     font-style: normal; color: transparent; -webkit-background-clip: text; background-clip: text;
     background-image: linear-gradient(100deg, var(--color-brand-300), #f0b6dc 45%, #a9a2ff);
@@ -342,7 +342,7 @@
   @media (max-width: 900px) {
     .login { grid-template-columns: 1fr; align-content: center; gap: 28px; }
     .login-pitch p, .login-points { display: none; }
-    .login-pitch h1 { font-size: clamp(30px, 8vw, 44px); margin-top: 16px; }
+    .login-pitch h1 { font-size: clamp(24px, 6.5vw, 34px); margin-top: 16px; }
   }
 
   /* --- the shell: rail + stage -------------------------------------------- */
@@ -471,6 +471,7 @@
   table.data tbody tr.click:hover { background: var(--accent-wash); }
   table.data tbody tr:last-child td { border-bottom: 0; }
   table.data caption { caption-side: bottom; text-align: left; padding-top: 8px; }
+  table.data tfoot td { font-weight: 650; color: var(--ink); border-top: 1px solid var(--line-strong); border-bottom: 0; background: var(--surface-2); }
 
   .pill {
     display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 650;
@@ -727,9 +728,13 @@
   .cmp-list { display: flex; flex-direction: column; min-height: 100%; padding: 4px 2px; }
   .cmp-key { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 2px 0 10px; color: var(--ink-2); font-size: 12.5px; font-weight: 550; }
   .cmp-key span { display: inline-flex; align-items: center; gap: 7px; }
+  .cmp-key b { color: var(--ink); }
   .cmp-key i { width: 9px; height: 9px; border-radius: 3px; }
   /* The rows share the card's height, up to a comfortable limit. */
-  .cmp-row { flex: 1 1 0; max-height: 92px; display: grid; grid-template-columns: minmax(96px, 150px) minmax(0, 1fr) minmax(64px, auto) 78px; align-items: center; gap: 14px; padding: clamp(7px, 1.5vh, 14px) 0; border-top: 1px solid var(--line); }
+  .cmp-row { flex: 1 1 0; max-height: 92px; display: grid; grid-template-columns: minmax(90px, 140px) minmax(0, 1fr) 76px 76px 82px; align-items: center; gap: 12px; padding: clamp(7px, 1.5vh, 14px) 0; border-top: 1px solid var(--line); }
+  .cmp-head { flex: 0 0 auto; padding: 0 0 6px; border-top: 0; color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
+  .cmp-head span:nth-child(n + 3) { text-align: right; }
+  .cmp-b { color: var(--ink-2); font-weight: 550; }
   .cmp-name { color: var(--ink-2); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cmp-bars { display: flex; flex-direction: column; gap: 4px; }
   .cmp-bars i { display: block; height: 7px; min-width: 2px; border-radius: 4px; transform-origin: left; }
@@ -771,8 +776,13 @@
     border-color: var(--accent-line); color: var(--accent); background-color: var(--accent-wash); border-radius: 999px;
   }
 
-  .split-foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: clamp(11.5px, 1.6vh, 13.5px); color: var(--ink-2); padding-top: 2px; }
-  .split-foot i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; flex: none; }
+  /* Dash vs Floauto: three figures over the ring, a note on the sum under it. */
+  .split-stats { flex: 0 0 auto; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 2px 0 4px; }
+  .split-stat { min-width: 0; padding: clamp(4px, .8vh, 8px) 11px; border: 0; border-radius: 11px; background: var(--surface-2); box-shadow: 0 0 0 1px var(--line) inset; text-align: left; color: inherit; transition: box-shadow .15s, background-color .15s; }
+  .split-stat:hover { background: var(--accent-wash); box-shadow: 0 0 0 1px var(--accent-line) inset; }
+  .split-stat span { display: block; color: var(--muted); font-size: 10.5px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .split-stat b { display: block; font: 650 clamp(15px, 2.3vh, 21px)/1.2 var(--font-display); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .split-foot { flex: 0 0 auto; text-align: center; text-wrap: balance; font-size: clamp(11px, 1.5vh, 13px); color: var(--muted); padding-top: 2px; }
 
   /* Insights page: a grid of cards that fits the screen. */
   .deck .insights { flex: 1 1 auto; min-height: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
@@ -780,7 +790,8 @@
   .deck .insight { padding: clamp(14px, 2.6vh, 26px) clamp(16px, 1.8vw, 28px); gap: clamp(6px, 1.2vh, 12px); }
   .deck .insight .insight-title { font-size: clamp(16px, 2.9vh, 27px); }
 
-  .deck .compare-controls { margin-left: auto; gap: 12px; flex-wrap: nowrap; align-items: flex-end; }
+  .deck .compare-controls { margin-left: auto; gap: 10px 12px; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; }
+  #compare-quick { width: auto; min-height: 34px; padding: 4px 28px 4px 10px; }
   .deck .compare-controls .range-inputs .input { width: 128px; }
 
   /* ---- a narrower desktop: the rail folds to icons ----------------------- */

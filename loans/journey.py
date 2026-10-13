@@ -75,8 +75,8 @@ EVENTS = [
 ]
 EVENT_LABELS = dict(EVENTS)
 
-# The five steps the daily report shows: "Approved" there is control approval,
-# the last sign-off before money moves.
+# The five steps the daily report's day-by-day table counts and times:
+# "Approved" there is control approval, the last sign-off before money moves.
 REPORT_EVENTS = frozenset({"submitted", "reviewed", "control_approved", "disbursed", "rejected"})
 
 # Waiting longer than this at a gate counts as "stalled" rather than "in queue".

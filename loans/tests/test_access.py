@@ -19,6 +19,7 @@ API_URLS = [
     ("api-dashboard", []),
     ("api-day", []),
     ("api-live", []),
+    ("api-earnings", []),
     ("api-drill", []),
     ("api-compare", []),
     ("api-search", []),
@@ -211,20 +212,83 @@ class ApiTests(SignedInTestCase):
         data = self.client.get(reverse("api-dashboard")).json()
         self.assertEqual(set(data["scopes"]), {"all", "cashback", "cash-for-car", "public-sector"})
         self.assertEqual([p["key"] for p in data["products"]], ["cashback", "cash-for-car", "public-sector"])
-        self.assertEqual(set(data["commission"]), {"loans", "dash", "floauto", "dash_higher", "floauto_higher", "equal"})
+        self.assertEqual(set(data["commission"]), {"loans", "value", "dash", "floauto", "dash_share", "floauto_share", "missing_shares"})
         for block in data["scopes"].values():
             self.assertEqual(set(block), {"tiles", "outcome", "statuses", "monthly", "bands", "states", "officers"})
 
-    def test_dash_floauto_split_counts_disbursed_cash_for_car_only(self):
+    def _disbursed_car_loan(self, pk, amount, dash, floauto, disbursed_at=None, **extra):
         from loans.models import CashForCarRequest
-        self.make_loan(CashForCarRequest, pk=1, reviewed=True, credit_approved=True, control_approved=True,
-                       disbursed=True, fee_dash_share=300, fee_floauto_share=100)
-        self.make_loan(CashForCarRequest, pk=2, reviewed=True, credit_approved=True, control_approved=True,
-                       disbursed=True, fee_dash_share=50, fee_floauto_share=200)
-        self.make_loan(CashForCarRequest, pk=3, fee_dash_share=999, fee_floauto_share=999)   # not disbursed
+        disbursed_at = disbursed_at or datetime.now(dt_timezone.utc) - timedelta(days=2)
+        return self.make_loan(CashForCarRequest, pk=pk, loan_amount=amount, reviewed=True, credit_approved=True,
+                              control_approved=True, disbursed=True, disbursed_at=disbursed_at,
+                              fee_dash_share=dash, fee_floauto_share=floauto, **extra)
+
+    def test_dash_and_floauto_earn_their_percentage_of_each_disbursed_loan(self):
+        from loans.models import CashForCarRequest
+        # N1,000,000 at 1.5% / 1.0%  ->  Dash 15,000, Floauto 10,000
+        # N2,000,000 at 2.0% / 0.5%  ->  Dash 40,000, Floauto 10,000
+        self._disbursed_car_loan(1, 1_000_000, "1.5", "1.0")
+        self._disbursed_car_loan(2, 2_000_000, "2.0", "0.5")
+        self.make_loan(CashForCarRequest, pk=3, loan_amount=9_000_000, fee_dash_share=5, fee_floauto_share=5)   # not disbursed
+        self._disbursed_car_loan(4, 9_000_000, "5", "5", rejected=True)          # paid out but rejected: not counted
         c = self.client.get(reverse("api-dashboard")).json()["commission"]
-        self.assertEqual((c["loans"], c["dash"], c["floauto"]), (2, 350.0, 300.0))
-        self.assertEqual((c["dash_higher"], c["floauto_higher"], c["equal"]), (1, 1, 0))
+        self.assertEqual((c["loans"], c["value"]), (2, 3_000_000.0))
+        self.assertEqual((c["dash"], c["floauto"]), (55_000.0, 20_000.0))
+        # As a share of the N3,000,000 disbursed: 55,000 / 3,000,000 and 20,000 / 3,000,000.
+        self.assertAlmostEqual(c["dash_share"], 55_000 * 100 / 3_000_000)
+        self.assertAlmostEqual(c["floauto_share"], 20_000 * 100 / 3_000_000)
+        self.assertEqual(c["missing_shares"], 0)
+
+    def test_a_period_counts_the_loans_disbursed_in_it(self):
+        now = datetime.now(dt_timezone.utc)
+        self._disbursed_car_loan(1, 1_000_000, "1.5", "1.0", disbursed_at=now - timedelta(days=3))
+        self._disbursed_car_loan(2, 4_000_000, "1.5", "1.0", disbursed_at=now - timedelta(days=200))
+        week = {"period": "range", "start": (now - timedelta(days=7)).date().isoformat(), "end": now.date().isoformat()}
+        recent = self.client.get(reverse("api-dashboard"), week).json()["commission"]
+        self.assertEqual((recent["loans"], recent["value"], recent["dash"]), (1, 1_000_000.0, 15_000.0))
+        everything = self.client.get(reverse("api-dashboard")).json()["commission"]
+        self.assertEqual((everything["loans"], everything["dash"]), (2, 75_000.0))
+
+    def test_a_missing_share_counts_as_nothing_and_is_reported(self):
+        self._disbursed_car_loan(1, 1_000_000, "1.5", "1.0")
+        self._disbursed_car_loan(2, 2_000_000, None, "1.0")
+        c = self.client.get(reverse("api-dashboard")).json()["commission"]
+        self.assertEqual((c["loans"], c["value"], c["dash"], c["floauto"]), (2, 3_000_000.0, 15_000.0, 30_000.0))
+        self.assertEqual(c["missing_shares"], 1)
+
+    def test_the_list_behind_the_card_shows_each_loan_and_adds_up_to_the_card(self):
+        now = datetime.now(dt_timezone.utc)
+        self._disbursed_car_loan(1, 1_000_000, "1.5", "1.0", disbursed_at=now - timedelta(days=5))
+        self._disbursed_car_loan(2, 2_000_000, "2.0", None, disbursed_at=now - timedelta(days=1))
+        data = self.client.get(reverse("api-earnings")).json()
+        # Newest disbursement first; each row is its own amount x share / 100.
+        self.assertEqual([r["reference"] for r in data["rows"]], ["REF-00002", "REF-00001"])
+        newest, older = data["rows"]
+        self.assertEqual((newest["dash_share"], newest["dash_earned"], newest["floauto_share"], newest["floauto_earned"]),
+                         (2.0, 40_000.0, None, 0.0))
+        self.assertEqual((older["amount"], older["dash_earned"], older["floauto_earned"]), (1_000_000.0, 15_000.0, 10_000.0))
+        # The rows add up to the card's own totals.
+        card = self.client.get(reverse("api-dashboard")).json()["commission"]
+        self.assertEqual(data["totals"], card)
+        self.assertEqual(sum(r["dash_earned"] for r in data["rows"]), card["dash"])
+        self.assertEqual(sum(r["floauto_earned"] for r in data["rows"]), card["floauto"])
+        self.assertEqual((data["count"], data["truncated"]), (2, False))
+        body = self.client.get(reverse("api-earnings")).content.decode()
+        self.assertNotIn("12345678901", body)   # BVN from make_loan
+        self.assertNotIn("10987654321", body)   # NIN
+
+    def test_the_list_behind_the_card_follows_the_period(self):
+        now = datetime.now(dt_timezone.utc)
+        self._disbursed_car_loan(1, 1_000_000, "1.5", "1.0", disbursed_at=now - timedelta(days=3))
+        self._disbursed_car_loan(2, 4_000_000, "1.5", "1.0", disbursed_at=now - timedelta(days=200))
+        week = {"period": "range", "start": (now - timedelta(days=7)).date().isoformat(), "end": now.date().isoformat()}
+        data = self.client.get(reverse("api-earnings"), week).json()
+        self.assertEqual([r["reference"] for r in data["rows"]], ["REF-00001"])
+        self.assertEqual(data["totals"], self.client.get(reverse("api-dashboard"), week).json()["commission"])
+
+    def test_no_disbursed_loans_is_all_zeros_not_an_error(self):
+        c = self.client.get(reverse("api-dashboard")).json()["commission"]
+        self.assertEqual((c["loans"], c["value"], c["dash"], c["floauto"], c["dash_share"]), (0, 0.0, 0.0, 0.0, None))
 
     def test_rejected_drill_carries_the_reason(self):
         for pk in (1, 2):
@@ -324,6 +388,14 @@ class ApiTests(SignedInTestCase):
         # Asking from the newest moment itself: nothing more to say.
         nothing = self.client.get(url, {"since": one.isoformat()}).json()
         self.assertEqual((nothing["events"], nothing["latest"]), ([], None))
+
+    def test_live_feed_reads_since_the_way_a_browser_writes_it(self):
+        # JavaScript's toISOString(): milliseconds and a trailing "Z".
+        hour, five, one = self._live_fixture()
+        asked = (five - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        response = self.client.get(reverse("api-live"), {"since": asked})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([e["event"] for e in response.json()["events"]], ["submitted", "reviewed"])
 
     def test_live_feed_ignores_a_timestamp_whose_step_was_undone(self):
         # reviewed_at left behind, but the flag is off: not an event.

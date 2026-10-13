@@ -49,6 +49,8 @@
     rendered: new Set(),
     dailyProduct: "all",
     compareMetric: "submitted",
+    compareMode: "previous",   // Period B: the period before, a month before, or a year before
+    compareUnit: null,         // months in a quick-picked period, so "so far" is set against the same days
     compare: null,
     monthlyMode: "count",
     distMode: "bands",
@@ -986,7 +988,7 @@
         { label: opts.money ? "Amount" : "Requests", value: opts.money ? moneyFull(it.value) : fmt(it.value), color: it.color },
         { label: "Share", value: pct(it.percent) }], opts.onClick ? (opts.clickHint || "Click to see the requests") : null) },
       series: [{
-        type: "pie", radius: ["56%", "86%"], center: ["50%", "50%"], startAngle: 90, padAngle: 2.5,
+        type: "pie", radius: ["56%", "86%"], center: ["50%", "50%"], startAngle: 90, padAngle: 2.5, stillShowZeroSum: false,
         // The ring sweeps round from the top.
         animationType: "expansion", animationDuration: 1200, animationEasing: "cubicInOut", animationDelay: chartMotion.wait,
         itemStyle: { borderRadius: 7 },
@@ -1166,7 +1168,6 @@
   // it happens: the page asks the database every few seconds and each new
   // step slides in at the top. On the right, the period day by day.
 
-  const dayTotal = (r) => DAILY_KEYS.reduce((s, k) => s + r[k], 0);
   /* The hours a day was active: its first and last event. */
   const dayHours = (r) => (!r.first_time ? "–" : r.first_time === r.last_time ? r.first_time : `${r.first_time} – ${r.last_time}`);
 
@@ -1175,17 +1176,19 @@
     drawLive();
   }
 
-  /* Day by day, newest first: only the days on which something happened.
+  /* Day by day, newest first: every day of the period, quiet days included.
      Click a day for everything that happened on it. */
   function drawDayTable(rows, product) {
     const p = P();
     const scroller = $("daily-table-scroll");
     const at = scroller.scrollTop;   // a refresh must not throw the reader back to the top
-    const active = rows.slice().reverse().filter((r) => dayTotal(r));
+    // Every day of the period has a row, newest (today) first, from midnight:
+    // a day starts at 0 and its figures fill in as its steps happen.
+    const days = rows.slice().reverse();
     fill($("daily-table"),
       h("thead", null, h("tr", null, h("th", { text: "Day" }), h("th", { text: "Time", title: "From the day's first event to its last" }),
         DAILY_KEYS.map((k) => h("th", { class: "n" }, h("span", { class: "ev" }, h("i", { style: `background:${p[k]}` }), DAILY_LABELS[k]))))),
-      h("tbody", null, active.length ? active.map((r) => h("tr", {
+      h("tbody", null, days.length ? days.map((r) => h("tr", {
         class: "click day-row", tabindex: "0", title: "See everything that happened on this day",
         onclick: () => openDay(r.date, product),
         onkeydown: (e) => { if (e.key === "Enter") openDay(r.date, product); },
@@ -1424,22 +1427,83 @@
       return;
     }
     // Cash for Car keeps to four charts: loan size and top states share a
-    // card (a switch on the card), and the Dash vs Floauto split takes the
-    // fourth, with who usually takes the larger share said in a sentence.
+    // card (a switch on the card), and the fourth is what Dash and Floauto
+    // earned on the loans disbursed in the period.
     drawDist(code);
-    const c = d.commission;
-    // The sentence first: it sets the height left for the ring, and a chart
-    // whose box changes while it is drawing itself in is cut short.
-    const ahead = c.dash_higher === c.floauto_higher ? null : (c.dash_higher > c.floauto_higher ? "dash" : "floauto");
-    fill($("split-foot"),
-      ahead ? h("i", { style: `background:${p[ahead]}` }) : null,
-      !c.loans ? "No disbursed loans in this period."
-        : ahead ? `${ahead === "dash" ? "Dash" : "Floauto"} took the larger share on ${fmt(Math.max(c.dash_higher, c.floauto_higher))} of ${fmt(c.loans)} loans.`
-          : "Dash and Floauto came out even, loan for loan.");
+    drawSplit(d.commission);
+  }
+
+  /* Dash vs Floauto: how many loans were disbursed, their value, and what
+     each party earned on them (loan amount x its fee share %, worked out on
+     the server - see _commission in loans/views.py). The ring splits the
+     combined earnings between the two. */
+  function drawSplit(c) {
+    const p = P();
+    // Every part of the card opens the loans behind it, one row per loan.
+    const stat = (label, value, title) => h("button", { type: "button", class: "split-stat", title: title || "See each loan", onclick: openEarnings },
+      h("span", { text: label }), h("b", { text: value }));
+    // The figures and the note first: they set the height left for the ring,
+    // and a chart whose box changes while it is drawing itself in is cut short.
+    fill($("split-stats"),
+      stat("Loans disbursed", fmt(c.loans)),
+      stat("Value disbursed", money(c.value), moneyFull(c.value)),
+      stat("Earned by both", money(c.dash + c.floauto), moneyFull(c.dash + c.floauto)));
+    fill($("split-foot"), !c.loans
+      ? "No Cash for Car loans were disbursed in this period."
+      : `Earned = loan amount × each one's fee share. On average: Dash ${pct(c.dash_share)}, Floauto ${pct(c.floauto_share)} of the value disbursed.` +
+        (c.missing_shares ? ` ${fmt(c.missing_shares)} loan${c.missing_shares === 1 ? " has" : "s have"} no share recorded, counted as 0%.` : ""));
     pie("ch-split-pie", [
       { key: "dash", label: "Dash", value: c.dash, colour: p.dash },
       { key: "floauto", label: "Floauto", value: c.floauto, colour: p.floauto },
-    ], { money: true });
+    ], { money: true, centre: "earned", onClick: () => openEarnings(), clickHint: "Click for what each loan earned" });
+  }
+
+  /* The loans behind the Dash vs Floauto card: for each, the amount
+     disbursed, each party's share and what it earned (amount x share / 100,
+     worked out on the server). The totals row is the card's own figures. */
+  async function openEarnings() {
+    const body = openDrawer("Dash vs Floauto — earned per loan", "Loading…");
+    try {
+      const d = await api("/api/earnings/", windowParams());
+      const t = d.totals;
+      const p = P();
+      $("drawer-sub").textContent = `${fmt(t.loans)} Cash for Car loan${t.loans === 1 ? "" : "s"} disbursed · ${periodText()}. ` +
+        "Each party earns its share of the loan amount when the loan is paid out. Click a loan for its journey.";
+      const share = (v) => (v == null ? "not recorded" : `${Number(v).toFixed(2).replace(/\.?0+$/, "")}%`);
+      const head = ["Disbursed", "Reference", "Applicant", "Amount", "Dash share", "Dash earned", "Floauto share", "Floauto earned"];
+      const table = h("table", { class: "data earnings" },
+        h("thead", null, h("tr", null, head.map((t, i) => h("th", { class: i >= 3 ? "n" : null, text: t })))),
+        h("tbody", null, d.rows.length ? d.rows.map((r) => h("tr", {
+          class: "click", tabindex: "0", title: "Open this loan's journey",
+          onclick: () => openJourney(r.product, r.id), onkeydown: (e) => { if (e.key === "Enter") openJourney(r.product, r.id); },
+        }, h("td", { class: "num whitespace-nowrap", text: r.disbursed ? longDate(r.disbursed) : "–" }),
+          h("td", { class: "whitespace-nowrap" }, h("b", { text: r.reference })),
+          h("td", { text: r.name }),
+          h("td", { class: "n", text: moneyFull(r.amount) }),
+          h("td", { class: `n${r.dash_share == null ? " muted" : ""}`, text: share(r.dash_share) }),
+          h("td", { class: "n" }, h("b", { text: moneyFull(r.dash_earned) })),
+          h("td", { class: `n${r.floauto_share == null ? " muted" : ""}`, text: share(r.floauto_share) }),
+          h("td", { class: "n" }, h("b", { text: moneyFull(r.floauto_earned) }))))
+          : h("tr", null, h("td", { class: "empty", colspan: "8", text: "No Cash for Car loans were disbursed in this period." }))),
+        d.rows.length ? h("tfoot", null, h("tr", null,
+          h("td", { colspan: "3", text: `Total · ${fmt(t.loans)} loan${t.loans === 1 ? "" : "s"}` }),
+          h("td", { class: "n", text: moneyFull(t.value) }),
+          h("td", { class: "n", title: "Dash's earnings as a share of the value disbursed", text: share(t.dash_share) }),
+          h("td", { class: "n", text: moneyFull(t.dash) }),
+          h("td", { class: "n", title: "Floauto's earnings as a share of the value disbursed", text: share(t.floauto_share) }),
+          h("td", { class: "n", text: moneyFull(t.floauto) }))) : null);
+      fill(body,
+        h("div", { class: "chips" },
+          h("span", { class: "chip" }, "Value disbursed", h("b", { text: money(t.value) })),
+          h("span", { class: "chip" }, h("i", { style: `background:${p.dash}` }), "Dash earned", h("b", { text: money(t.dash) })),
+          h("span", { class: "chip" }, h("i", { style: `background:${p.floauto}` }), "Floauto earned", h("b", { text: money(t.floauto) }))),
+        h("div", { class: "table-wrap" }, table),
+        d.truncated ? h("p", { class: "box-note mt", text: `The newest ${fmt(d.rows.length)} of ${fmt(d.count)} loans are listed; the totals cover all of them.` }) : null,
+        t.missing_shares ? h("p", { class: "box-note mt", text: `${fmt(t.missing_shares)} loan${t.missing_shares === 1 ? " has" : "s have"} no share recorded for Dash or Floauto; a missing share counts as 0%.` }) : null);
+      enterDrawer();
+    } catch (err) {
+      body.replaceChildren(h("div", { class: "error-box", text: err.message }));
+    }
   }
 
   function drawDist(code) {
@@ -1610,20 +1674,70 @@
 
   // --- COMPARE -----------------------------------------------------------------
 
+  // --- Period A and Period B ---------------------------------------------------
+  // Periods are calendar periods. A quarter's "previous period" is the
+  // quarter before it - 1 Apr to 30 Jun for 1 Jul to 30 Sep - not "the same
+  // number of days before", which lands a day early whenever the two
+  // quarters differ in length. And "a month before" 31 March is the last day
+  // of February, not 3 March.
+
+  const lastDay = (y, m) => new Date(y, m + 1, 0).getDate();          // m counts from 0
+  const monthEnd = (iso) => { const d = parseDay(iso); return isoDay(new Date(d.getFullYear(), d.getMonth() + 1, 0)); };
+
+  /* `iso` moved by whole months, kept inside the month it lands in. */
+  function shiftMonths(iso, n) {
+    const d = parseDay(iso);
+    const first = new Date(d.getFullYear(), d.getMonth() + n, 1);
+    return isoDay(new Date(first.getFullYear(), first.getMonth(), Math.min(d.getDate(), lastDay(first.getFullYear(), first.getMonth()))));
+  }
+  /* How many whole calendar months [start, end] covers (from a 1st to a
+     month's last day), or 0 if it is not whole months. */
+  function wholeMonths(start, end) {
+    const s = parseDay(start), e = parseDay(end);
+    if (s.getDate() !== 1 || end !== monthEnd(end)) return 0;
+    return (e.getFullYear() - s.getFullYear()) * 12 + e.getMonth() - s.getMonth() + 1;
+  }
+  /* [start, end] moved back by whole months. A range that runs to a month's
+     last day still does: 1 Jul - 30 Sep becomes 1 Apr - 30 Jun. */
+  function monthsBefore(start, end, months) {
+    const toMonthEnd = parseDay(start).getDate() === 1 && end === monthEnd(end);
+    const bEnd = shiftMonths(end, -months);
+    return [shiftMonths(start, -months), toMonthEnd ? monthEnd(bEnd) : bEnd];
+  }
+  /* Period B for Period A. `unit` is the length in months a quick pick chose
+     (3 for "This quarter so far"), so a period that is still running is set
+     against the same days of the one before (1 Jul - 12 Jul for 1 Oct - 12 Oct). */
+  function periodBefore(start, end, mode, unit) {
+    if (mode === "month") return monthsBefore(start, end, 1);
+    if (mode === "year") return monthsBefore(start, end, 12);
+    const months = unit || wholeMonths(start, end);
+    if (months) return monthsBefore(start, end, months);
+    const length = dayCount(start, end);          // any other dates: the same number of days just before
+    const bEnd = addDays(start, -1);
+    return [addDays(bEnd, -(length - 1)), bEnd];
+  }
+  /* The calendar periods on the Quick pick list, as [start, end, months]. */
+  function quickPeriod(kind) {
+    const t = parseDay(CFG.today);
+    const y = t.getFullYear(), m = t.getMonth(), q = m - (m % 3);
+    const span = (y1, m1, y2, m2) => [isoDay(new Date(y1, m1, 1)), isoDay(new Date(y2, m2 + 1, 0))];
+    return {
+      "this-month": [isoDay(new Date(y, m, 1)), CFG.today, 1],
+      "last-month": [...span(y, m - 1, y, m - 1), 1],
+      "this-quarter": [isoDay(new Date(y, q, 1)), CFG.today, 3],
+      "last-quarter": [...span(y, q - 3, y, q - 1), 3],
+      "this-year": [`${y}-01-01`, CFG.today, 12],
+      "last-year": [...span(y - 1, 0, y - 1, 11), 12],
+    }[kind];
+  }
+
   function setCompare(mode) {
     if (!$("a-start").value || !$("a-end").value) {
       $("a-end").value = CFG.today;
       $("a-start").value = addDays(CFG.today, -(CFG.defaultDays - 1));
     }
-    const aStart = $("a-start").value, aEnd = $("a-end").value;
-    const len = dayCount(aStart, aEnd);
-    let bStart, bEnd;
-    if (mode === "month" || mode === "year") {
-      const shift = (iso) => { const d = parseDay(iso); if (mode === "month") d.setMonth(d.getMonth() - 1); else d.setFullYear(d.getFullYear() - 1); return isoDay(d); };
-      bStart = shift(aStart); bEnd = shift(aEnd);
-    } else {
-      bEnd = addDays(aStart, -1); bStart = addDays(bEnd, -(len - 1));
-    }
+    state.compareMode = mode;
+    const [bStart, bEnd] = periodBefore($("a-start").value, $("a-end").value, mode, state.compareUnit);
     $("b-start").value = bStart;
     $("b-end").value = bEnd;
     document.querySelectorAll("#compare-presets button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.cmp === mode)));
@@ -1644,9 +1758,8 @@
     }
   }
 
-  /* Six measures, each as a pair of bars (this period over the other), this
-     period's figure and the change. The other period's figure is one hover
-     away - a table of both would be three numbers a row. */
+  /* Six measures, each as a pair of bars (Period A over Period B), both
+     figures and the change from B to A. */
   const COMPARE_ROWS = [
     ["submitted", "Applications"], ["disbursed", "Disbursed"], ["rejected", "Rejected"],
     ["disbursed_value", "Value paid out"], ["completion_rate", "Completion rate"], ["median_days_to_disburse", "Time to disburse"],
@@ -1657,46 +1770,80 @@
     const c = state.compare;
     $("tag-a").style.background = p.a;
     $("tag-b").style.background = p.b;
-    const show = (m, v) => (v == null ? "–" : m.kind === "money" ? money(v) : m.kind === "pct" ? whole(v) : m.kind === "days" ? daysLong(v) : fmt(v));
+    const show = (m, v) => (v == null ? "–" : m.kind === "money" ? money(v) : m.kind === "pct" ? pct(v)
+      : m.kind === "days" ? `${Number(v).toFixed(1).replace(/\.0$/, "")} days` : fmt(v));
+    const exact = (m, v) => (v == null ? "–" : m.kind === "money" ? moneyFull(v) : show(m, v));
     const metric = Object.fromEntries(c.metrics.map((m) => [m.key, m]));
-    const range = (x) => `${shortDate(x.start)} – ${shortDate(x.end)}`;
+    // The dates in words, with the year and the length, so a date typed in
+    // the wrong order (day and month swapped) is plain to see.
+    const range = (x) => `${longDate(x.start)} – ${longDate(x.end)} · ${fmt(dayCount(x.start, x.end))} days`;
     fill($("compare-list"),
       h("div", { class: "cmp-key" },
-        h("span", null, h("i", { style: `background:${p.a}` }), `Period A · ${range(c.a)}`),
-        h("span", null, h("i", { style: `background:${p.b}` }), `Period B · ${range(c.b)}`)),
+        h("span", null, h("i", { style: `background:${p.a}` }), h("b", { text: "A" }), range(c.a)),
+        h("span", null, h("i", { style: `background:${p.b}` }), h("b", { text: "B" }), range(c.b))),
+      h("div", { class: "cmp-row cmp-head" }, h("span"), h("span"), h("span", { text: "Period A" }), h("span", { text: "Period B" }), h("span", { text: "Change" })),
       COMPARE_ROWS.map(([key, name]) => {
         const m = metric[key];
         if (!m) return null;
         const top = Math.max(m.a || 0, m.b || 0) || 1;
-        return h("div", { class: "cmp-row", title: `Period A: ${show(m, m.a)} · Period B: ${show(m, m.b)}` },
+        return h("div", { class: "cmp-row", title: `Period A: ${exact(m, m.a)} · Period B: ${exact(m, m.b)}` },
           h("span", { class: "cmp-name", text: name }),
           h("span", { class: "cmp-bars" },
             h("i", { style: `width:${((m.a || 0) * 100) / top}%;background:${p.a}` }),
             h("i", { style: `width:${((m.b || 0) * 100) / top}%;background:${p.b}` })),
           h("b", { class: "cmp-val", text: show(m, m.a) }),
+          h("span", { class: "cmp-val cmp-b", text: show(m, m.b) }),
           m.change == null ? h("span", { class: "delta flat", text: "–" }) : h("span", { class: `delta ${m.direction || "flat"}`,
-            text: `${m.change > 0 ? "▲" : m.change < 0 ? "▼" : ""} ${Math.abs(m.change).toFixed(0)}${m.kind === "pct" ? " pts" : "%"}` }));
+            text: `${m.change > 0 ? "▲" : m.change < 0 ? "▼" : ""} ${Math.abs(m.change).toFixed(1)}${m.kind === "pct" ? " pts" : "%"}` }));
       }),
-      h("p", { class: "box-note", text: "The figure is Period A's; hover a row for both. Completion rate follows each period's own requests to today, so the earlier period has had longer to complete." }));
+      h("p", { class: "box-note", text: "Change is Period A against Period B. Applications, disbursed, rejected and value count what happened on each day of a period; completion rate follows that period's own applications to today, so the earlier period has had longer to complete." }));
     UI.animate($("compare-list").querySelectorAll(".cmp-bars i"), { scaleX: [0, 1] }, { duration: 0.7, delay: UI.stagger(0.03) });
 
-    const metricKey = state.compareMetric;
-    const len = Math.max(c.a.days.length, c.b.days.length);
-    const asBars = len <= 31;
+    // The chart compares the two periods step by step: day by day for up to
+    // a month, week by week up to two months, calendar month by calendar
+    // month beyond - two quarters are three months against three months.
+    const key = state.compareMetric;
+    const longest = Math.max(c.a.days.length, c.b.days.length);
+    const unit = longest <= 31 ? "day" : longest <= 62 ? "week" : "month";
+    const steps = (days) => {
+      const groups = [];
+      days.forEach((d, i) => {
+        const id = unit === "day" ? i : unit === "week" ? Math.floor(i / 7) : d.date.slice(0, 7);
+        let g = groups[groups.length - 1];
+        if (!g || g.id !== id) { g = { id, days: [] }; groups.push(g); }
+        g.days.push(d);
+      });
+      return groups.map((g) => ({
+        value: g.days.reduce((sum, d) => sum + d[key], 0),
+        short: unit === "month" ? MONTHS[+g.id.slice(5, 7) - 1] : null,
+        label: unit === "day" ? weekdayDate(g.days[0].date)
+          : unit === "week" ? `${shortDate(g.days[0].date)} – ${shortDate(g.days[g.days.length - 1].date)}`
+            : `${monthLong(g.id)}${g.days.length < lastDay(+g.id.slice(0, 4), +g.id.slice(5, 7) - 1) ? ` (${g.days.length} days)` : ""}`,
+      }));
+    };
+    const a = steps(c.a.days), b = steps(c.b.days);
+    const count = Math.max(a.length, b.length);
+    const word = { day: "Day", week: "Week", month: "Month" }[unit];
+    $("compare-chart-title").textContent = `By ${unit}`;
+    const labelled = { show: count <= 16, position: "top", distance: 5, color: p.ink, fontSize: count > 10 ? 10.5 : 12, fontWeight: 650,
+      formatter: (it) => (it.value ? fmt(it.value) : "") };
     draw("ch-compare-daily", {
       legend: { data: ["Period A", "Period B"] },
-      tooltip: { trigger: "axis", axisPointer: { type: asBars ? "shadow" : "line" }, formatter: (items) => {
-        const i = items[0].dataIndex; const ra = c.a.days[i], rb = c.b.days[i];
-        return tipRows(`Day ${i + 1}`, [
-          { label: ra ? weekdayDate(ra.date) : "Period A", value: ra ? fmt(ra[metricKey]) : "–", color: p.a },
-          { label: rb ? weekdayDate(rb.date) : "Period B", value: rb ? fmt(rb[metricKey]) : "–", color: p.b }]);
+      tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (items) => {
+        const i = items[0].dataIndex;
+        return tipRows(`${word} ${i + 1}`, [
+          { label: a[i] ? `A · ${a[i].label}` : "Period A", value: a[i] ? fmt(a[i].value) : "–", color: p.a },
+          { label: b[i] ? `B · ${b[i].label}` : "Period B", value: b[i] ? fmt(b[i].value) : "–", color: p.b }]);
       } },
-      grid: grid({ top: 34, bottom: len > 45 ? 30 : 4 }),
-      dataZoom: len > 45 ? [{ type: "inside" }, { type: "slider", height: 16, bottom: 2, borderColor: p.axis, textStyle: { color: p.muted } }] : undefined,
-      xAxis: catAxis(Array.from({ length: len }, (_, i) => `Day ${i + 1}`)), yAxis: valAxis({ minInterval: 1 }),
-      series: asBars
-        ? [bar("Period A", c.a.days.map((r) => r[metricKey]), p.a, { barCategoryGap: "30%", barGap: "10%", barMaxWidth: 12 }), bar("Period B", c.b.days.map((r) => r[metricKey]), p.b, { barCategoryGap: "30%", barGap: "10%", barMaxWidth: 12 })]
-        : [line("Period A", c.a.days.map((r) => r[metricKey]), p.a), line("Period B", c.b.days.map((r) => r[metricKey]), p.b, { lineStyle: { width: 2.5, color: p.b, type: "dashed" } })],
+      grid: grid({ top: 34 }),
+      xAxis: catAxis(Array.from({ length: count }, (_, i) => (unit === "month"
+        ? [a[i] && a[i].short, b[i] && b[i].short].filter(Boolean).join(" / ")
+        : `${word} ${i + 1}`))),
+      yAxis: valAxis({ minInterval: 1 }),
+      series: [
+        bar("Period A", a.map((x) => x.value), p.a, { barCategoryGap: "28%", barGap: "10%", barMaxWidth: unit === "day" ? 12 : 34, label: labelled }),
+        bar("Period B", b.map((x) => x.value), p.b, { barCategoryGap: "28%", barGap: "10%", barMaxWidth: unit === "day" ? 12 : 34, label: labelled }),
+      ],
     });
   }
 
@@ -1869,12 +2016,27 @@
     // The live feed asks only while the daily report can be seen.
     document.addEventListener("visibilitychange", syncLive);
     document.querySelectorAll("#compare-presets button").forEach((b) => b.addEventListener("click", () => setCompare(b.dataset.cmp)));
-    for (const id of ["a-start", "a-end", "b-start", "b-end"]) {
+    // Period A typed by hand: Period B follows it by the comparison chosen.
+    for (const id of ["a-start", "a-end"]) {
+      $(id).addEventListener("change", () => {
+        state.compareUnit = null;
+        $("compare-quick").value = "";
+        if ($("a-start").value && $("a-end").value) setCompare(state.compareMode || "previous");
+      });
+    }
+    // Period B typed by hand: it is used as typed.
+    for (const id of ["b-start", "b-end"]) {
       $(id).addEventListener("change", () => {
         document.querySelectorAll("#compare-presets button").forEach((x) => x.setAttribute("aria-pressed", "false"));
         loadCompare();
       });
     }
+    $("compare-quick").addEventListener("change", () => {
+      const picked = quickPeriod($("compare-quick").value);
+      if (!picked) return;
+      [$("a-start").value, $("a-end").value, state.compareUnit] = picked;
+      setCompare(state.compareMode || "previous");
+    });
     document.querySelectorAll("#compare-metric button").forEach((b) => b.addEventListener("click", () => {
       state.compareMetric = b.dataset.metric;
       document.querySelectorAll("#compare-metric button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));

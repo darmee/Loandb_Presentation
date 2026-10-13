@@ -11,6 +11,7 @@ urlpatterns = [
     path("api/dashboard/", views.api_dashboard, name="api-dashboard"),
     path("api/day/", views.api_day, name="api-day"),
     path("api/live/", views.api_live, name="api-live"),
+    path("api/earnings/", views.api_earnings, name="api-earnings"),
     path("api/drill/", views.api_drill, name="api-drill"),
     path("api/compare/", views.api_compare, name="api-compare"),
     path("api/search/", views.api_search, name="api-search"),
