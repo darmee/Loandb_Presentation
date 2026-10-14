@@ -150,29 +150,6 @@ LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "presentation"
 LOGOUT_REDIRECT_URL = "login"
 
-# --- forgot password -----------------------------------------------------------
-# A reset link goes only to addresses on this domain, and works once for an hour.
-PASSWORD_RESET_EMAIL_DOMAIN = os.getenv("PASSWORD_RESET_EMAIL_DOMAIN", "dash-mfb.com").strip().lstrip("@").lower()
-PASSWORD_RESET_TIMEOUT = 60 * 60
-# The address people open the dashboard at, e.g. https://loans.dash-mfb.com -
-# the reset link in the email is built on it.
-PUBLIC_URL = os.getenv("DJANGO_PUBLIC_URL", "").strip().rstrip("/")
-
-# Outgoing mail. With no EMAIL_HOST the email is printed to the console instead
-# of sent: fine for development, and nothing goes out by accident.
-EMAIL_HOST = os.getenv("EMAIL_HOST", "")
-if EMAIL_HOST:
-    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-    EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-    EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-    EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-    EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
-    EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False").lower() == "true"
-    EMAIL_TIMEOUT = 15
-else:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "") or os.getenv("EMAIL_HOST_USER", "") or "no-reply@dash-mfb.com"
-
 
 
 AXES_FAILURE_LIMIT = 5
@@ -238,9 +215,6 @@ LOGGING = {
             "propagate": False,
         },
 
-        # A reset email that could not be sent is logged here.
-        "django.contrib.auth": {"handlers": ["audit_file", "console"], "level": "WARNING",
-                                "propagate": False},
         "axes": {"handlers": ["audit_file", "console"], "level": "WARNING",
                  "propagate": False},
     },

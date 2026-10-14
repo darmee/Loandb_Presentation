@@ -402,17 +402,6 @@ plus:
   in the drawer or from the search palette (who, which application, from where) and every failed
   login. Rotates at 5MB.
 
-- **Forgot password** - "Forgot password?" on the sign-in page emails a link
-  to set a new one (`loans/password_reset.py`). Only @dash-mfb.com addresses
-  (`PASSWORD_RESET_EMAIL_DOMAIN`), and only to the email saved on the user's
-  account in `/admin/`. The link works once and expires after an hour; the
-  page never says whether an address has an account; at most 3 requests an
-  hour per address and 20 per computer; setting a new password lifts a
-  sign-in lockout. Needs `EMAIL_HOST` and the other `EMAIL_*` settings and
-  `DJANGO_PUBLIC_URL` in `.env` (see `.env.example`); without `EMAIL_HOST` the
-  email is printed to the console instead of sent. Requests, completions and
-  failures to send are written to `logs/audit.log`.
-
 Row visibility is currently "any authenticated user sees everything", but every
 query goes through `LoanRequestQuerySet.visible_to(user)`. Per-user rules are
 expected; that method is the single place they go, and it already denies by
@@ -550,8 +539,8 @@ reports no issues with `DEBUG=False`.
 
     .venv/bin/python manage.py test loans
 
-98 tests covering the read-only guarantee, the status derivation across all 64
-flag combinations, sign-in, password reset and API access control, the security headers and cache rules, the
+88 tests covering the read-only guarantee, the status derivation across all 64
+flag combinations, sign-in and API access control, the security headers and cache rules, the
 live feed, and the journey analyses (funnel monotonicity, every lost applicant accounted for
 at a gate, Lagos-day bucketing, reason grouping, drill-down lists matching the
 chart numbers). The loan tables are unmanaged, so `loans/tests/base.py` builds

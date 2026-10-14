@@ -27,10 +27,7 @@
     <form method="post">{% csrf_token %}
       <label class="field-label" for="id_username">Username</label>
       <input class="input" id="id_username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="150" autofocus required>
-      <div class="field-row">
-        <label class="field-label" for="id_password">Password</label>
-        <a class="field-link" href="{% url 'password_reset' %}">Forgot password?</a>
-      </div>
+      <label class="field-label" for="id_password">Password</label>
       <input class="input" id="id_password" name="password" type="password" autocomplete="current-password" required>
       <input type="hidden" name="next" value="{{ next }}">
       <button type="submit" class="btn btn-primary btn-block mt-5">Sign in</button>
