@@ -785,38 +785,45 @@ def by_product(group):
 
 # --- period comparison -------------------------------------------------------
 
+# A period is the applications submitted in it, followed to today: how many
+# came in, how many of those have been paid out and for how much, how many were
+# turned down. Every figure counts the same applications, so they add up with
+# each other, and they are the figures the Overview, Monthly overview and
+# request pages show for the same dates.
 COMPARE_METRICS = [
     # key, label, kind, higher is better?
-    ("submitted", "Applications submitted", "count", True),
-    ("reviewed", "Reviewed", "count", True),
-    ("credit_approved", "Credit approved", "count", True),
-    ("control_approved", "Control approved", "count", True),
-    ("disbursed", "Disbursed", "count", True),
+    ("submitted", "Applications", "count", True),
+    ("disbursed", "Loans disbursed", "count", True),
+    ("disbursed_value", "Amount disbursed", "money", True),
     ("rejected", "Rejected", "count", False),
-    ("correction", "Corrections requested", "count", False),
-    ("submitted_value", "Value requested", "money", True),
-    ("disbursed_value", "Value disbursed", "money", True),
-    ("completion_rate", "Completion rate (cohort)", "pct", True),
-    ("approval_rate", "Approval rate (cohort, decided)", "pct", True),
-    ("median_days_to_disburse", "Median days to disburse", "days", False),
+    ("completion_rate", "Share paid out", "pct", True),
+    ("median_days_to_disburse", "Days to disburse", "days", False),
 ]
 
 
 def period_metrics(records, start, end):
-    days = daily_activity(records, start, end)
-    metrics = {event: sum(d[event] for d in days) for event, _label in EVENTS}
-    metrics["submitted_value"] = sum(d["submitted_value"] for d in days)
-    metrics["disbursed_value"] = sum(d["disbursed_value"] for d in days)
-    outcome = outcome_summary(cohort(records, start, end))
-    metrics["completion_rate"] = outcome["completion_rate"]
-    metrics["approval_rate"] = outcome["approval_rate"]
-    disbursed_here = [
-        _days(r.at["DISBURSED"] - r.at["SUBMITTED"])
-        for r in records
-        if r.at["DISBURSED"] and r.at["SUBMITTED"] and _between(r.at["DISBURSED"], start, end)
-    ]
-    metrics["median_days_to_disburse"] = _median(disbursed_here)
-    return metrics, days
+    """One period's figures, and the same split day by day of application."""
+    group = cohort(records, start, end)
+    outcome = outcome_summary(group)
+    metrics = {key: outcome[key] for key, *_rest in COMPARE_METRICS}
+    return metrics, cohort_days(group, start, end)
+
+
+def cohort_days(group, start, end):
+    """For each day, the applications submitted on it and what became of them."""
+    days = {day: {"submitted": 0, "disbursed": 0, "disbursed_value": 0.0, "rejected": 0}
+            for day in date_range(start, end)}
+    for r in group:
+        row = days.get(local_date(r.at["SUBMITTED"]))
+        if row is None:
+            continue
+        row["submitted"] += 1
+        if r.disbursed:
+            row["disbursed"] += 1
+            row["disbursed_value"] += r.amount
+        if r.rejected:
+            row["rejected"] += 1
+    return [{"date": day.isoformat(), **values} for day, values in days.items()]
 
 
 def compare(records, a, b):
@@ -1113,7 +1120,7 @@ def dashboard_block(group, start, end):
 
     # Per month submitted: how many there were, and where they stand today.
     # The last three feed the trend lines behind the page's headline tiles.
-    months = {key: {"count": 0, "value": 0.0, "disbursed": 0, "in_progress": 0, "pending": 0,
+    months = {key: {"count": 0, "value": 0.0, "disbursed": 0, "disbursed_value": 0.0, "in_progress": 0, "pending": 0,
                     "rejected": 0, "by_product": Counter()}
               for key in months_between(start, end)}
     standing = {"IN_PROGRESS": "in_progress", "PENDING": "pending", "REJECTED": "rejected"}
@@ -1123,6 +1130,7 @@ def dashboard_block(group, start, end):
             bucket["count"] += 1
             bucket["value"] += r.amount
             bucket["disbursed"] += 1 if r.disbursed else 0
+            bucket["disbursed_value"] += r.amount if r.disbursed else 0
             bucket["by_product"][r.product] += 1
             state = standing.get(STATUS_GROUPS.get(r.status, "IN_PROGRESS"))
             if state:
@@ -1159,6 +1167,7 @@ def dashboard_block(group, start, end):
         ],
         "monthly": [
             {"key": key, "count": m["count"], "value": m["value"], "disbursed": m["disbursed"],
+             "disbursed_value": m["disbursed_value"],
              "in_progress": m["in_progress"], "pending": m["pending"], "rejected": m["rejected"],
              "by_product": dict(m["by_product"])}
             for key, m in months.items()

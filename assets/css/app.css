@@ -672,6 +672,11 @@
   .tiles.tiles-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
   .tiles-6 .tile { padding: 10px 14px 11px; border-radius: 16px; }
   .tiles-6 .tile .v { font-size: clamp(20px, 3.6vh, 34px); }
+  /* Seven: the six plus the amount disbursed. Smaller figures so a naira
+     amount fits beside the counts. */
+  .tiles.tiles-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 9px; }
+  .tiles-7 .tile { padding: 10px 12px 11px; }
+  .tiles-7 .tile .v { font-size: clamp(18px, 3.2vh, 30px); }
   .tile { overflow: hidden; min-width: 0; text-align: left; color: inherit; border-radius: 18px; padding: 12px 18px 13px; display: flex; flex-direction: column; justify-content: flex-start; }
   button.tile:hover { translate: 0 -3px; box-shadow: var(--shadow-lift); }
   button.tile:active { scale: .985; }
@@ -735,22 +740,22 @@
   .feed-item.is-new { animation: feed-flash 3s ease-out; }
 
   /* Compare: a measure a row - two bars, one figure, the change. */
-  .cmp-list { display: flex; flex-direction: column; min-height: 100%; padding: 4px 2px; }
-  .cmp-key { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 2px 0 10px; color: var(--ink-2); font-size: 12.5px; font-weight: 550; }
-  .cmp-key span { display: inline-flex; align-items: center; gap: 7px; }
-  .cmp-key b { color: var(--ink); }
-  .cmp-key i { width: 9px; height: 9px; border-radius: 3px; }
-  /* The rows share the card's height, up to a comfortable limit. */
-  .cmp-row { flex: 1 1 0; max-height: 92px; display: grid; grid-template-columns: minmax(90px, 140px) minmax(0, 1fr) 76px 76px 82px; align-items: center; gap: 12px; padding: clamp(7px, 1.5vh, 14px) 0; border-top: 1px solid var(--line); }
-  .cmp-head { flex: 0 0 auto; padding: 0 0 6px; border-top: 0; color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
-  .cmp-head span:nth-child(n + 3) { text-align: right; }
-  .cmp-b { color: var(--ink-2); font-weight: 550; }
-  .cmp-name { color: var(--ink-2); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .cmp-bars { display: flex; flex-direction: column; gap: 4px; }
-  .cmp-bars i { display: block; height: 7px; min-width: 2px; border-radius: 4px; transform-origin: left; }
-  .cmp-val { text-align: right; font: 650 clamp(15px, 2.3vh, 20px) var(--font-display); color: var(--ink); white-space: nowrap; }
-  .cmp-row .delta { justify-self: end; }
-  .cmp-list .box-note { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); }
+  .cmp-list { display: flex; flex-direction: column; min-height: 100%; gap: 10px; }
+  /* Compare periods: a plain table, read across - the measure, Period A,
+     Period B, the change. Names in full, figures large. */
+  .cmp-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .cmp-table th, .cmp-table td { padding: clamp(8px, 1.7vh, 15px) 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+  .cmp-table .num { text-align: right; white-space: nowrap; }
+  .cmp-table thead th { vertical-align: bottom; padding-top: 2px; color: var(--ink-2); font-size: 13px; font-weight: 650; border-bottom-color: var(--line-strong); }
+  .cmp-table thead small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; font-weight: 500; }
+  .cmp-period { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-size: 14px; }
+  .cmp-period i { width: 10px; height: 10px; border-radius: 3px; }
+  .cmp-table tbody th { color: var(--ink); font-size: clamp(14px, 1.9vh, 16px); font-weight: 600; }
+  .cmp-table tbody td { font: 650 clamp(16px, 2.4vh, 22px) var(--font-display); color: var(--ink); }
+  .cmp-table tbody td.cmp-b { color: var(--ink-2); }
+  .cmp-table tbody tr:last-child th, .cmp-table tbody tr:last-child td { border-bottom: 0; }
+  .cmp-table .delta { font-size: 13px; }
+  .cmp-note { margin-top: auto; color: var(--ink-2); font-size: 13px; line-height: 1.45; }
   .compare-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
   .span-all { grid-column: 1 / -1; }
 
@@ -840,15 +845,17 @@
     .deck-head { flex-wrap: wrap; }
     .deck-title { max-width: none; flex: 1 1 100%; }
     .deck-title h1 { font-size: 28px; }
-    .tiles, .tiles.tiles-3, .tiles.tiles-6 { flex: 1 1 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); order: 3; }
+    .tiles, .tiles.tiles-3, .tiles.tiles-6, .tiles.tiles-7 { flex: 1 1 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); order: 3; }
+    /* Seven in two columns: the first spans both, so none is left alone. */
+    .tiles.tiles-7 .tile:first-child { grid-column: 1 / -1; }
     .live-grid { grid-template-columns: 1fr; grid-template-rows: none; flex: none; }
     .live-grid .table-scroll { max-height: 520px; }
     .pie-body { flex-direction: column; }
     .pie-body .chart { flex: none; width: 100%; height: 220px; }
     .legend { width: 100%; font-size: 14px; }
     .head-controls { margin-left: 0; flex: 1 1 100%; flex-wrap: wrap; }
-    .cmp-row { grid-template-columns: minmax(0, 1fr) 70px auto; }
-    .cmp-row .cmp-bars { grid-column: 1 / -1; order: 5; }
+    .cmp-table th, .cmp-table td { padding-left: 6px; padding-right: 6px; }
+    .cmp-table tbody td { font-size: 16px; }
     .deck-grid, .g2x2, .g2x1, .compare-grid { grid-template-columns: 1fr; grid-template-rows: none; flex: none; }
     .card { min-height: 300px; }
     .card .chart { flex: none; height: 260px; }
@@ -891,7 +898,7 @@
     .card-head { min-height: 24px; }
     .tile { padding: 6px 13px 7px; border-radius: 14px; }
     .tile .meter { margin: 4px 0 0; height: 4px; }
-    .cmp-row { padding-top: 7px; padding-bottom: 7px; }
+    .cmp-table th, .cmp-table td { padding-top: 6px; padding-bottom: 6px; }
     .tile .f { display: none; }
     .deck-title .sub { display: none; }
     select.why { min-height: 26px; padding: 1px 26px 1px 10px; }

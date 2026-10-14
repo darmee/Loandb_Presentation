@@ -190,6 +190,39 @@ class DrillAndCompareTests(SimpleTestCase):
                 figures = re.findall(r"\d[\d,.]*", f"{insight['title']} {insight['detail']}")
                 self.assertLessEqual(len(figures), 3, insight)
 
+    def test_a_loan_counts_in_the_period_it_was_applied_for(self):
+        # Applied for on 29 August, paid out on 2 September (four steps, a day
+        # each): it is August's loan, as the Monthly overview shows it.
+        late = rec(1, created=datetime(2026, 8, 29, 9, 0, tzinfo=timezone.utc), stages=4, amount=500_000)
+        aug = (date(2026, 8, 1), date(2026, 8, 31))
+        result = journey.compare([late], SEPT, aug)
+        metrics = {m["key"]: (m["a"], m["b"]) for m in result["metrics"]}
+        self.assertEqual(metrics["disbursed"], (0, 1))
+        self.assertEqual(metrics["disbursed_value"], (0, 500_000))
+        # The chart puts it on the day it was applied for.
+        days = {d["date"]: d for d in result["b"]["days"]}
+        self.assertEqual((days["2026-08-29"]["disbursed"], days["2026-08-29"]["disbursed_value"]), (1, 500_000))
+
+    def test_a_period_shows_what_the_overview_shows_for_the_same_dates(self):
+        records = [rec(i, created=datetime(2026, 9, 1 + i % 28, 9, 0, tzinfo=timezone.utc), stages=i % 5,
+                       rejected=i % 6 == 0, amount=100_000 * i) for i in range(1, 60)]
+        result = journey.compare(records, SEPT, (date(2026, 8, 1), date(2026, 8, 31)))
+        shown = {m["key"]: m["a"] for m in result["metrics"]}
+        tiles = journey.dashboard_block(journey.cohort(records, *SEPT), *SEPT)["tiles"]
+        self.assertEqual(shown, {"submitted": tiles["applications"], "disbursed": tiles["disbursed"],
+                                 "disbursed_value": tiles["disbursed_value"], "rejected": tiles["rejected"],
+                                 "completion_rate": tiles["completion_rate"],
+                                 "median_days_to_disburse": tiles["median_days_to_disburse"]})
+        # And the chart's days add up to the table.
+        for key in ("submitted", "disbursed", "disbursed_value", "rejected"):
+            self.assertEqual(sum(d[key] for d in result["a"]["days"]), shown[key])
+
+    def test_each_month_carries_the_amount_disbursed_on_its_applications(self):
+        records = [rec(1, stages=4, amount=300_000), rec(2, stages=4, amount=200_000), rec(3, stages=2, amount=900_000)]
+        block = journey.dashboard_block(records, *SEPT)
+        self.assertEqual(block["tiles"]["disbursed_value"], 500_000)
+        self.assertEqual([m["disbursed_value"] for m in block["monthly"]], [500_000])
+
     def busy_records(self):
         return [rec(i, created=datetime(2026, 8 + i % 2, 1 + i % 20, 9, 0, tzinfo=timezone.utc), stages=i % 5,
                     rejected=i % 4 == 0, reason="Adverse credit bureau record.", corrections=i % 2,

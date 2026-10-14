@@ -24,7 +24,7 @@ month, or any custom dates) apply to every page.
 | Cashback / Public Sector | Final outcome with **See why...**, applications per month (per day for short periods; click a day for its requests), loan size distribution, top states |
 | Cash for Car | Final outcome, applications per month, loan size distribution / top states (a switch on one card), and **Dash vs Floauto earnings**: how many loans were disbursed in the period, their value, and what each party earned on them, split in a ring. `fee_dash_share` and `fee_floauto_share` are percentages of the loan, so each earns `loan amount x share / 100` on every loan disbursed in the period (by disbursement date; see `_commission` in `loans/views.py`) |
 | Applications vs disbursements | Running totals, value requested vs disbursed |
-| Compare periods | Two periods measure by measure: a pair of bars, both figures and the change from B to A (see "Comparing periods" below) |
+| Compare periods | Two periods side by side in one table - applications, loans and amount disbursed, rejected, share paid out, days to disburse - with the change from B to A, and a chart of the same by day, week or month (see "Comparing periods" below) |
 | Top insights | The six findings that matter most, in plain language, last in the deck. Each card says what stands out, what it means, and how it was worked out ("How we know"); its buttons open the evidence - the very applications the figures were counted from, the day, the two periods side by side in Compare, or the page with the chart (`journey.insights`) |
 
 ### Comparing periods
@@ -41,11 +41,14 @@ last quarter, this or last year). Period B follows it:
   earlier, kept inside the month (31 March, a month back, is the last day of
   February).
 
-Period B can also be typed in by hand. Applications, disbursed, rejected and
-value count what happened on each day of a period; completion rate follows
-that period's own applications to today. The chart compares the periods day
-by day for up to a month, week by week up to two months, and calendar month
-by calendar month beyond, so two quarters are three months against three.
+Period B can also be typed in by hand. Each period is the applications made
+in it, followed to today: how many came in, how many of them have been paid
+out and for how much, how many were turned down, the share paid out and the
+typical days to pay out - the figures the Overview shows for the same dates
+(`journey.period_metrics`). The chart splits the same applications by the
+day, week or month they were made in: day by day for up to a month, week by
+week up to two months, and calendar month by calendar month beyond, so two
+quarters are three months against three.
 
 The Dash vs Floauto card on the Cash for Car page opens the loans behind it:
 for each, the amount disbursed, each party's share and what it earned.
@@ -539,7 +542,7 @@ reports no issues with `DEBUG=False`.
 
     .venv/bin/python manage.py test loans
 
-88 tests covering the read-only guarantee, the status derivation across all 64
+91 tests covering the read-only guarantee, the status derivation across all 64
 flag combinations, sign-in and API access control, the security headers and cache rules, the
 live feed, and the journey analyses (funnel monotonicity, every lost applicant accounted for
 at a gate, Lagos-day bucketing, reason grouping, drill-down lists matching the
