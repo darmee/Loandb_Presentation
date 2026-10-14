@@ -937,8 +937,11 @@
     $(id).replaceChildren(
       tile({ label: "Applications", value: counted(t.applications, fmt), foot: `${money(t.requested_value)} requested`, trend: by("count"),
         onClick: () => openDrill("all", "1", { product, reasons: false }), title: "See every request" }),
-      tile({ label: "Disbursed", value: counted(t.disbursed, fmt), colour: p.outcome.DISBURSED, foot: `${money(t.disbursed_value)} · ${pct(t.completion_rate)}`,
+      tile({ label: "Disbursed", value: counted(t.disbursed, fmt), colour: p.outcome.DISBURSED, foot: `${pct(t.completion_rate)} of applications`,
         trend: by("disbursed"), onClick: open("DISBURSED", p.outcome.DISBURSED), title: "See these requests" }),
+      tile({ label: "Amount disbursed", value: counted(t.disbursed_value, money), colour: p.outcome.DISBURSED,
+        foot: `on ${fmt(t.disbursed)} loan${t.disbursed === 1 ? "" : "s"}`, trend: by("disbursed_value"),
+        onClick: open("DISBURSED", p.outcome.DISBURSED), title: `${moneyFull(t.disbursed_value)} - see the loans` }),
       tile({ label: "In progress", value: counted(t.in_progress, fmt), colour: p.outcome.IN_PROGRESS, foot: "Reviewed to approved",
         trend: by("in_progress"), onClick: open("IN_PROGRESS", p.outcome.IN_PROGRESS), title: "See where they are waiting" }),
       tile({ label: "Pending", value: counted(t.pending, fmt), colour: p.outcome.PENDING, foot: "Not yet reviewed",
@@ -1784,13 +1787,6 @@
     }
   }
 
-  /* Six measures, each as a pair of bars (Period A over Period B), both
-     figures and the change from B to A. */
-  const COMPARE_ROWS = [
-    ["submitted", "Applications"], ["disbursed", "Disbursed"], ["rejected", "Rejected"],
-    ["disbursed_value", "Value paid out"], ["completion_rate", "Completion rate"], ["median_days_to_disburse", "Time to disburse"],
-  ];
-
   function renderCompare() {
     const p = P();
     const c = state.compare;
@@ -1798,32 +1794,30 @@
     $("tag-b").style.background = p.b;
     const show = (m, v) => (v == null ? "–" : m.kind === "money" ? money(v) : m.kind === "pct" ? pct(v)
       : m.kind === "days" ? `${Number(v).toFixed(1).replace(/\.0$/, "")} days` : fmt(v));
-    const exact = (m, v) => (v == null ? "–" : m.kind === "money" ? moneyFull(v) : show(m, v));
-    const metric = Object.fromEntries(c.metrics.map((m) => [m.key, m]));
-    // The dates in words, with the year and the length, so a date typed in
-    // the wrong order (day and month swapped) is plain to see.
-    const range = (x) => `${longDate(x.start)} – ${longDate(x.end)} · ${fmt(dayCount(x.start, x.end))} days`;
+    const exact = (m, v) => (v == null ? "no figure" : m.kind === "money" ? moneyFull(v) : show(m, v));
+    const change = (m) => (m.change == null ? h("span", { class: "delta flat", text: "–" })
+      : h("span", { class: `delta ${m.direction || "flat"}` },
+        m.change > 0 ? "▲ " : m.change < 0 ? "▼ " : "",
+        `${Math.abs(m.change).toFixed(1).replace(/\.0$/, "")}${m.kind === "pct" ? " pts" : "%"}`));
+    // Each column is headed by its dates in words, with the year and the
+    // length, so a date typed the wrong way round is plain to see.
+    const sameYear = (x) => x.start.slice(0, 4) === x.end.slice(0, 4);
+    const period = (x, colour, name) => h("th", { class: "num", scope: "col" },
+      h("span", { class: "cmp-period" }, h("i", { style: `background:${colour}` }), name),
+      h("small", { text: `${sameYear(x) ? shortDate(x.start) : longDate(x.start)} – ${longDate(x.end)}` }),
+      h("small", { text: `${fmt(dayCount(x.start, x.end))} days` }));
     fill($("compare-list"),
-      h("div", { class: "cmp-key" },
-        h("span", null, h("i", { style: `background:${p.a}` }), h("b", { text: "A" }), range(c.a)),
-        h("span", null, h("i", { style: `background:${p.b}` }), h("b", { text: "B" }), range(c.b))),
-      h("div", { class: "cmp-row cmp-head" }, h("span"), h("span"), h("span", { text: "Period A" }), h("span", { text: "Period B" }), h("span", { text: "Change" })),
-      COMPARE_ROWS.map(([key, name]) => {
-        const m = metric[key];
-        if (!m) return null;
-        const top = Math.max(m.a || 0, m.b || 0) || 1;
-        return h("div", { class: "cmp-row", title: `Period A: ${exact(m, m.a)} · Period B: ${exact(m, m.b)}` },
-          h("span", { class: "cmp-name", text: name }),
-          h("span", { class: "cmp-bars" },
-            h("i", { style: `width:${((m.a || 0) * 100) / top}%;background:${p.a}` }),
-            h("i", { style: `width:${((m.b || 0) * 100) / top}%;background:${p.b}` })),
-          h("b", { class: "cmp-val", text: show(m, m.a) }),
-          h("span", { class: "cmp-val cmp-b", text: show(m, m.b) }),
-          m.change == null ? h("span", { class: "delta flat", text: "–" }) : h("span", { class: `delta ${m.direction || "flat"}`,
-            text: `${m.change > 0 ? "▲" : m.change < 0 ? "▼" : ""} ${Math.abs(m.change).toFixed(1)}${m.kind === "pct" ? " pts" : "%"}` }));
-      }),
-      h("p", { class: "box-note", text: "Change is Period A against Period B. Applications, disbursed, rejected and value count what happened on each day of a period; completion rate follows that period's own applications to today, so the earlier period has had longer to complete." }));
-    UI.animate($("compare-list").querySelectorAll(".cmp-bars i"), { scaleX: [0, 1] }, { duration: 0.7, delay: UI.stagger(0.03) });
+      h("table", { class: "cmp-table" },
+        h("thead", null, h("tr", null,
+          h("th", { scope: "col", text: "" }), period(c.a, p.a, "Period A"), period(c.b, p.b, "Period B"),
+          h("th", { class: "num", scope: "col", text: "Change" }))),
+        h("tbody", null, c.metrics.map((m) => h("tr", { title: `${m.label}: Period A ${exact(m, m.a)}, Period B ${exact(m, m.b)}` },
+          h("th", { scope: "row", text: m.label }),
+          h("td", { class: "num cmp-a", text: show(m, m.a) }),
+          h("td", { class: "num cmp-b", text: show(m, m.b) }),
+          h("td", { class: "num" }, change(m)))))),
+      h("p", { class: "cmp-note", text: "Each period counts the applications made in it and follows them to today, so the figures match the Overview for the same dates. Change is Period A against Period B." }));
+    UI.enter($("compare-list").querySelectorAll("tbody tr"), { y: 6, step: 0.04, duration: 0.45 });
 
     // The chart compares the two periods step by step: day by day for up to
     // a month, week by week up to two months, calendar month by calendar
@@ -1850,22 +1844,24 @@
     const a = steps(c.a.days), b = steps(c.b.days);
     const count = Math.max(a.length, b.length);
     const word = { day: "Day", week: "Week", month: "Month" }[unit];
-    $("compare-chart-title").textContent = `By ${unit}`;
+    const isMoney = key === "disbursed_value";
+    const figure = (v) => (isMoney ? money(v) : fmt(v));
+    $("compare-chart-title").textContent = `By ${unit} of application`;
     const labelled = { show: count <= 16, position: "top", distance: 5, color: p.ink, fontSize: count > 10 ? 10.5 : 12, fontWeight: 650,
-      formatter: (it) => (it.value ? fmt(it.value) : "") };
+      formatter: (it) => (it.value ? figure(it.value) : "") };
     draw("ch-compare-daily", {
       legend: { data: ["Period A", "Period B"] },
       tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (items) => {
         const i = items[0].dataIndex;
         return tipRows(`${word} ${i + 1}`, [
-          { label: a[i] ? `A · ${a[i].label}` : "Period A", value: a[i] ? fmt(a[i].value) : "–", color: p.a },
-          { label: b[i] ? `B · ${b[i].label}` : "Period B", value: b[i] ? fmt(b[i].value) : "–", color: p.b }]);
+          { label: a[i] ? `A · ${a[i].label}` : "Period A", value: a[i] ? (isMoney ? moneyFull(a[i].value) : fmt(a[i].value)) : "–", color: p.a },
+          { label: b[i] ? `B · ${b[i].label}` : "Period B", value: b[i] ? (isMoney ? moneyFull(b[i].value) : fmt(b[i].value)) : "–", color: p.b }]);
       } },
       grid: grid({ top: 34 }),
       xAxis: catAxis(Array.from({ length: count }, (_, i) => (unit === "month"
         ? [a[i] && a[i].short, b[i] && b[i].short].filter(Boolean).join(" / ")
         : `${word} ${i + 1}`))),
-      yAxis: valAxis({ minInterval: 1 }),
+      yAxis: valAxis(isMoney ? { axisLabel: { formatter: (v) => money(v) } } : { minInterval: 1 }),
       series: [
         bar("Period A", a.map((x) => x.value), p.a, { barCategoryGap: "28%", barGap: "10%", barMaxWidth: unit === "day" ? 12 : 34, label: labelled }),
         bar("Period B", b.map((x) => x.value), p.b, { barCategoryGap: "28%", barGap: "10%", barMaxWidth: unit === "day" ? 12 : 34, label: labelled }),

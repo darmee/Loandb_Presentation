@@ -86,7 +86,7 @@
     <section class="panel" id="panel-overview" role="tabpanel">
       <div class="deck-head">
         <div class="deck-title"><h1>All requests</h1><p class="sub" id="overview-sub"></p></div>
-        <div class="tiles tiles-6" id="tiles-all"></div>
+        <div class="tiles tiles-6 tiles-7" id="tiles-all"></div>
       </div>
       <div class="deck-grid g2x2">
         <div class="card">
@@ -167,7 +167,7 @@
     <section class="panel product-panel" id="panel-product-{{ p.code }}" role="tabpanel" data-product="{{ p.code }}">
       <div class="deck-head">
         <div class="deck-title"><h1>{{ p.label }}</h1><p class="sub" id="sub-{{ p.code }}"></p></div>
-        <div class="tiles tiles-6" id="tiles-{{ p.code }}"></div>
+        <div class="tiles tiles-6 tiles-7" id="tiles-{{ p.code }}"></div>
       </div>
       <div class="deck-grid g2x2">
         <div class="card">
@@ -260,9 +260,10 @@
       <div class="deck-grid compare-grid">
         <div class="card card-scroll"><div class="cmp-list" id="compare-list"></div></div>
         <div class="card">
-          <div class="card-head"><h3 id="compare-chart-title">By day</h3><div class="seg" id="compare-metric" role="group" aria-label="Metric">
-            <button type="button" data-metric="submitted" aria-pressed="true">Submitted</button>
+          <div class="card-head"><h3 id="compare-chart-title">By day of application</h3><div class="seg" id="compare-metric" role="group" aria-label="Metric">
+            <button type="button" data-metric="submitted" aria-pressed="true">Applications</button>
             <button type="button" data-metric="disbursed">Disbursed</button>
+            <button type="button" data-metric="disbursed_value">Amount</button>
             <button type="button" data-metric="rejected">Rejected</button>
           </div></div>
           <div class="chart" id="ch-compare-daily"></div>
