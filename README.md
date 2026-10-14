@@ -25,7 +25,7 @@ month, or any custom dates) apply to every page.
 | Cash for Car | Final outcome, applications per month, loan size distribution / top states (a switch on one card), and **Dash vs Floauto earnings**: how many loans were disbursed in the period, their value, and what each party earned on them, split in a ring. `fee_dash_share` and `fee_floauto_share` are percentages of the loan, so each earns `loan amount x share / 100` on every loan disbursed in the period (by disbursement date; see `_commission` in `loans/views.py`) |
 | Applications vs disbursements | Running totals, value requested vs disbursed |
 | Compare periods | Two periods measure by measure: a pair of bars, both figures and the change from B to A (see "Comparing periods" below) |
-| Top insights | The six findings that matter most, in plain language, last in the deck |
+| Top insights | The six findings that matter most, in plain language, last in the deck. Each card says what stands out, what it means, and how it was worked out ("How we know"); its buttons open the evidence - the very applications the figures were counted from, the day, the two periods side by side in Compare, or the page with the chart (`journey.insights`) |
 
 ### Comparing periods
 
@@ -539,7 +539,7 @@ reports no issues with `DEBUG=False`.
 
     .venv/bin/python manage.py test loans
 
-86 tests covering the read-only guarantee, the status derivation across all 64
+88 tests covering the read-only guarantee, the status derivation across all 64
 flag combinations, sign-in and API access control, the security headers and cache rules, the
 live feed, and the journey analyses (funnel monotonicity, every lost applicant accounted for
 at a gate, Lagos-day bucketing, reason grouping, drill-down lists matching the

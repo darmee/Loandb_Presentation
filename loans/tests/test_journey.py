@@ -190,10 +190,45 @@ class DrillAndCompareTests(SimpleTestCase):
                 figures = re.findall(r"\d[\d,.]*", f"{insight['title']} {insight['detail']}")
                 self.assertLessEqual(len(figures), 3, insight)
 
-    def test_insights_point_at_a_real_tab(self):
-        records = [rec(i, stages=i % 5, rejected=(i % 7 == 0), reason="Adverse credit bureau record")
-                   for i in range(1, 40)]
-        tabs = {"overview", "daily", "funnel", "flow", "rejections", "corrections", "compare"}
+    def busy_records(self):
+        return [rec(i, created=datetime(2026, 8 + i % 2, 1 + i % 20, 9, 0, tzinfo=timezone.utc), stages=i % 5,
+                    rejected=i % 4 == 0, reason="Adverse credit bureau record.", corrections=i % 2,
+                    correction_open=i % 9 == 0, product=["cashback", "cash-for-car", "public-sector"][i % 3])
+                for i in range(1, 121)]
+
+    def test_every_insight_says_how_it_was_worked_out_and_where_to_check(self):
+        tabs = {"overview", "daily", "monthly", "flow", "compare"} | {f"product-{c}" for c in journey.PRODUCTS}
+        found = journey.insights(self.busy_records(), *SEPT, now=NOW)
+        self.assertGreaterEqual(len(found), 5)
+        for insight in found:
+            with self.subTest(title=insight["title"]):
+                self.assertIn(insight["tone"], {"good", "bad", "neutral"})
+                self.assertTrue(insight["why"])
+                self.assertTrue(1 <= len(insight["actions"]) <= 2)
+                for action in insight["actions"]:
+                    self.assertTrue(action["label"])
+                    if "tab" in action:
+                        self.assertIn(action["tab"], tabs)
+                    else:
+                        self.assertTrue({"drill", "day", "compare"} & action.keys())
+
+    def test_a_button_opens_as_many_applications_as_it_says(self):
+        import re
+        records = self.busy_records()
+        checked = 0
         for insight in journey.insights(records, *SEPT, now=NOW):
-            self.assertIn(insight["tab"], tabs)
-            self.assertIn(insight["tone"], {"good", "bad", "neutral"})
+            for action in insight["actions"]:
+                figure = re.search(r"\d[\d,]*", action["label"])
+                if "drill" not in action or not figure:
+                    continue
+                with self.subTest(button=action["label"]):
+                    title, rows = journey.drill(records, action["drill"]["kind"], action["drill"]["key"], *SEPT, now=NOW)
+                    self.assertTrue(title)
+                    self.assertEqual(len(rows), int(figure.group(0).replace(",", "")))
+                    checked += 1
+        self.assertGreaterEqual(checked, 4)
+
+    def test_the_comparison_button_carries_the_two_periods_the_card_compared(self):
+        found = journey.insights(self.busy_records(), *SEPT, now=NOW)
+        compare = [a["compare"] for i in found for a in i["actions"] if "compare" in a]
+        self.assertEqual(compare, [{"a": ["2026-09-01", "2026-09-30"], "b": ["2026-08-02", "2026-08-31"]}])
