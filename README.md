@@ -405,6 +405,24 @@ plus:
   in the drawer or from the search palette (who, which application, from where) and every failed
   login. Rotates at 5MB.
 
+- **Forgot password** - "Forgot password?" on the sign-in page emails a link
+  to set a new one (`loans/password_reset.py`). Only @dash-mfb.com addresses
+  (`PASSWORD_RESET_EMAIL_DOMAIN`), and only to the email saved on the user's
+  account in `/admin/`. The link works once and expires after an hour; the
+  page never says whether an address has an account; at most 3 requests an
+  hour per address and 20 per computer; setting a new password lifts a
+  sign-in lockout. The email provider goes in `.env` (see `.env.example`),
+  with `DJANGO_PUBLIC_URL`: **Microsoft Graph** - `MSGRAPH_TENANT_ID`,
+  `MSGRAPH_CLIENT_ID`, `MSGRAPH_CLIENT_SECRET`, `MSGRAPH_SENDER`; sent by
+  `loans/mail_graph.py` from an Entra ID app registration with the Graph
+  application permission `Mail.Send` (admin consent), which should be
+  restricted to the sender mailbox with an Exchange Online application access
+  policy - or SMTP with `EMAIL_HOST` and the other `EMAIL_*` settings. Check
+  it with `manage.py sendtestemail you@dash-mfb.com`. With neither, the email
+  is printed to the console instead of sent, and `logs/audit.log` says so. Requests, completions and failures to send are
+  written to `logs/audit.log`.
+  Step-by-step guide: [docs/forgot-password-guide.md](docs/forgot-password-guide.md).
+
 Row visibility is currently "any authenticated user sees everything", but every
 query goes through `LoanRequestQuerySet.visible_to(user)`. Per-user rules are
 expected; that method is the single place they go, and it already denies by
@@ -542,8 +560,8 @@ reports no issues with `DEBUG=False`.
 
     .venv/bin/python manage.py test loans
 
-91 tests covering the read-only guarantee, the status derivation across all 64
-flag combinations, sign-in and API access control, the security headers and cache rules, the
+109 tests covering the read-only guarantee, the status derivation across all 64
+flag combinations, sign-in, password reset and API access control, the security headers and cache rules, the
 live feed, and the journey analyses (funnel monotonicity, every lost applicant accounted for
 at a gate, Lagos-day bucketing, reason grouping, drill-down lists matching the
 chart numbers). The loan tables are unmanaged, so `loans/tests/base.py` builds
