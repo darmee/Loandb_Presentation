@@ -85,7 +85,7 @@ def _parse_date(value, default):
         return date.fromisoformat(value)
     except ValueError:
         raise ValueError(f"Not a date: {value!r}. Use YYYY-MM-DD.")
-
+ 
 
 def _window(request, prefix=""):
     """The [start, end] date range a request asks for, both inclusive."""
@@ -153,15 +153,17 @@ def _disbursed_car_loans(user, start, end, everything=False):
     """The Cash for Car loans the Dash vs Floauto figures are counted on.
 
     Disbursed - paid out and not rejected, the derived status DISBURSED, the
-    same rule as every other figure - and disbursed in the period, by the
-    Lagos calendar day of `disbursed_at`, because that is when the money is
-    earned. All time takes every disbursed loan, including old rows with no
-    disbursement date. The card's totals and the list behind it both come
-    from here, so the list always adds up to the card.
+    same rule as every other figure - out of the applications SUBMITTED in
+    the period (by the Lagos calendar day of `created_at`), whenever they
+    were paid out. That is the same set of loans the Cash for Car page's
+    "Disbursed" and "Amount disbursed" tiles count (journey.cohort), so the
+    card and the tiles always agree, as do Overview and Compare for the same
+    dates. All time takes every disbursed loan. The card's totals and the
+    list behind it both come from here, so the list always adds up to the card.
     """
     loans = CashForCarRequest.objects.visible_to(user).filter(status="DISBURSED")
     if not everything:
-        loans = loans.filter(disbursed_at__date__range=(start, end))
+        loans = loans.filter(created_at__date__range=(start, end))
     return loans
 
 
@@ -179,7 +181,7 @@ def _earned(share_column):
 
 
 def _commission(user, start, end, everything=False):
-    """What Dash and Floauto earned on the Cash for Car loans disbursed in a period.
+    """What Dash and Floauto earned on the period's Cash for Car applications that were paid out.
 
     `fee_dash_share` and `fee_floauto_share` are percentages of the loan
     (1.5 means 1.5%). Each party earns its share when the loan is paid out,
@@ -241,7 +243,7 @@ def api_earnings(request):
     )
     count = loans.count()
     rows = []
-    for row in loans.values("id", "reference_no", "first_name", "_last_name", "loan_amount", "disbursed_at",
+    for row in loans.values("id", "reference_no", "first_name", "_last_name", "loan_amount", "created_at", "disbursed_at",
                             "fee_dash_share", "fee_floauto_share", "dash_earned", "floauto_earned")[:EARNINGS_LIMIT]:
         share = lambda v: float(v) if v is not None else None   # noqa: E731 - None: no share recorded
         rows.append({
@@ -249,6 +251,7 @@ def api_earnings(request):
             "id": row["id"],
             "reference": row["reference_no"],
             "name": " ".join(p for p in (row["first_name"], row["_last_name"]) if p),
+            "applied": timezone.localtime(row["created_at"]).date().isoformat() if row["created_at"] else None,
             "disbursed": timezone.localtime(row["disbursed_at"]).date().isoformat() if row["disbursed_at"] else None,
             "amount": float(row["loan_amount"] or 0),
             "dash_share": share(row["fee_dash_share"]),
