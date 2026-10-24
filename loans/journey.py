@@ -919,8 +919,9 @@ def insights(records, start, end, now=None):
     lossy = max(gate_rows, key=lambda g: g["lost"])
     if lossy["lost"]:
         add(90, "bad", f"Most applications fall through at {lossy['label']}",
-            f"Of the {lossy['arrived']:,} that reached it, {lossy['lost']:,} were turned down there "
-            f"or have sat there for over {STALLED_DAYS} days.",
+            f"Of the {lossy['arrived']:,} that reached it, {lossy['lost']:,} "
+            f"{'was' if lossy['lost'] == 1 else 'were'} turned down there "
+            f"or {'has' if lossy['lost'] == 1 else 'have'} sat there for over {STALLED_DAYS} days.",
             "Every step from review to disbursement is checked for how many applications it "
             "turns down or leaves waiting; this step loses the most.",
             [_drill(f"See the {lossy['lost']:,} that fell through", "gate_lost", lossy["gate"])])

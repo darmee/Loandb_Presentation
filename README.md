@@ -22,7 +22,7 @@ month, or any custom dates) apply to every page.
 | Daily report | The second page, and two things side by side. **Live activity**: what is happening on each loan as it happens - every step a loan reaches (submitted, reviewed, credit approved, control approved, disbursed, rejected, correction requested) with whose loan, which officer, and how long ago, read from the database every 5 seconds; a new step slides in at the top. **Day by day**: every day on which something happened, newest first - the day, the time (its first event to its last), and how many requests were submitted, reviewed, approved, disbursed and rejected. A line opens that loan's journey; a day opens everything that happened on it |
 | Monthly overview | Applications (or value) per month, loan size distribution, top states, officer performance |
 | Cashback / Public Sector | Final outcome with **See why...**, applications per month (per day for short periods; click a day for its requests), loan size distribution, top states |
-| Cash for Car | Final outcome, applications per month, loan size distribution / top states (a switch on one card), and **Dash vs Floauto earnings**: how many loans were disbursed in the period, their value, and what each party earned on them, split in a ring. `fee_dash_share` and `fee_floauto_share` are percentages of the loan, so each earns `loan amount x share / 100` on every loan disbursed in the period (by disbursement date; see `_commission` in `loans/views.py`) |
+| Cash for Car | Final outcome, applications per month, loan size distribution / top states (a switch on one card), and **Dash vs Floauto earnings**: how many loans were disbursed in the period, their value, and what each party earned on them, split in a ring. `fee_dash_share` and `fee_floauto_share` are percentages of the loan, so each earns `loan amount x share / 100` on every loan applied for in the period and paid out - the same loans as the page's Disbursed tiles, so the two always agree (see `_disbursed_car_loans` and `_commission` in `loans/views.py`) |
 | Applications vs disbursements | Running totals, value requested vs disbursed |
 | Compare periods | Two periods side by side in one table - applications, loans and amount disbursed, rejected, share paid out, days to disburse - with the change from B to A, and a chart of the same by day, week or month (see "Comparing periods" below) |
 | Top insights | The six findings that matter most, in plain language, last in the deck. Each card says what stands out, what it means, and how it was worked out ("How we know"); its buttons open the evidence - the very applications the figures were counted from, the day, the two periods side by side in Compare, or the page with the chart (`journey.insights`) |
@@ -52,6 +52,21 @@ quarters are three months against three.
 
 The Dash vs Floauto card on the Cash for Car page opens the loans behind it:
 for each, the amount disbursed, each party's share and what it earned.
+
+### The period report
+
+`manage.py period_report` writes a printable report for the last three
+complete months (or `--months 6`, or `--start 2026-07-01 --end 2026-09-30`)
+into `reports/`, set against the same span before; `--pdf` also saves a PDF
+through Microsoft Edge. It holds a headline, a **decision checklist** with
+green / amber / red flags (thresholds in `loans/report.py`), month-by-month
+and per-product tables, pipeline health, rejections and corrections, a
+**Cash for Car deep dive** (Floauto evaluation, offers accepted, earnings by
+month, loan-to-value, security coverage, lending above Floauto's
+recommendation, scorecard, vehicles, the fee and interest splits, data gaps)
+and a page of meeting notes. Its figures come from the same functions as the
+dashboard (`loans/report.py`), and it holds totals only, no applicant names.
+`reports/` is not committed.
 
 ### Reading the charts
 
@@ -560,7 +575,7 @@ reports no issues with `DEBUG=False`.
 
     .venv/bin/python manage.py test loans
 
-109 tests covering the read-only guarantee, the status derivation across all 64
+116 tests covering the read-only guarantee, the status derivation across all 64
 flag combinations, sign-in, password reset and API access control, the security headers and cache rules, the
 live feed, and the journey analyses (funnel monotonicity, every lost applicant accounted for
 at a gate, Lagos-day bucketing, reason grouping, drill-down lists matching the

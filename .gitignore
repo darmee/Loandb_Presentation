@@ -37,3 +37,6 @@ tools/
 
 # macOS
 .DS_Store
+
+# Period reports hold business figures: never commit them.
+reports/

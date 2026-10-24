@@ -1,0 +1,247 @@
+{% load report_tags humanize %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loan pipeline report · {{ r.label }}</title>
+{# A file opened from disk and printed to PDF, never served by the site, so its styles live here. #}
+<style>
+  @page { size: A4; margin: 14mm 13mm 16mm; }
+  :root { --ink: #1d1a22; --muted: #625b6d; --line: #e0d9e7; --accent: #4f1a60; --wash: #f6f2f9;
+          --good: #11782f; --good-wash: #e3f4e8; --warn: #9a5b00; --warn-wash: #fdf1dc; --bad: #b42318; --bad-wash: #fdecea; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0 auto; max-width: 1000px; padding: 24px 20px; color: var(--ink); font: 10pt/1.5 "Segoe UI", system-ui, sans-serif; }
+  @media print { body { padding: 0; max-width: none; } }
+  h1 { font-size: 22pt; margin: 2pt 0 4pt; color: var(--accent); }
+  h2 { font-size: 13.5pt; color: var(--accent); margin: 18pt 0 6pt; padding-top: 6pt; border-top: 1.5pt solid var(--accent); break-after: avoid; }
+  h3 { font-size: 10.8pt; margin: 12pt 0 4pt; break-after: avoid; }
+  p { margin: 4pt 0; }
+  .kicker { text-transform: uppercase; letter-spacing: .12em; font-size: 7.6pt; font-weight: 700; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .sample { background: var(--warn-wash); color: var(--warn); padding: 6pt 10pt; border-radius: 4pt; font-weight: 600; margin: 8pt 0; }
+  .box { background: var(--wash); border-left: 3pt solid var(--accent); padding: 8pt 11pt; border-radius: 3pt; margin: 8pt 0; break-inside: avoid; }
+  .box ol { margin: 4pt 0; padding-left: 16pt; }
+  table { border-collapse: collapse; width: 100%; margin: 5pt 0 10pt; font-size: 9pt; break-inside: auto; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  th, td { text-align: left; padding: 4pt 6pt; border-bottom: .6pt solid var(--line); vertical-align: top; }
+  th { background: var(--wash); color: var(--accent); font-weight: 650; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .good { color: var(--good); font-weight: 600; }
+  .bad { color: var(--bad); font-weight: 600; }
+  .chip { display: inline-block; min-width: 52pt; text-align: center; padding: 1pt 6pt; border-radius: 99pt; font-weight: 700; font-size: 8pt; text-transform: uppercase; letter-spacing: .04em; }
+  .chip.green { background: var(--good-wash); color: var(--good); }
+  .chip.amber { background: var(--warn-wash); color: var(--warn); }
+  .chip.red { background: var(--bad-wash); color: var(--bad); }
+  .chip.none { background: #eee; color: var(--muted); }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8pt; margin: 6pt 0 10pt; }
+  .card { border: .7pt solid var(--line); border-radius: 5pt; padding: 7pt 9pt; break-inside: avoid; }
+  .card b { display: block; font-size: 15pt; color: var(--ink); }
+  .card span { font-size: 8pt; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 650; }
+  .card small { display: block; font-size: 8.5pt; }
+  .insight { border-left: 3pt solid var(--line); padding: 2pt 0 2pt 8pt; margin: 5pt 0; break-inside: avoid; }
+  .insight.tone-bad { border-color: var(--bad); } .insight.tone-good { border-color: var(--good); } .insight.tone-neutral { border-color: var(--accent); }
+  td:first-child { white-space: nowrap; }
+  td.barcell { width: 32%; }
+  .insight b { display: block; }
+  .bar { display: inline-block; height: 7pt; background: var(--accent); border-radius: 2pt; vertical-align: middle; }
+  .notes td { height: 26pt; }
+  .pagebreak { break-before: page; }
+</style>
+</head>
+<body>
+
+<p class="kicker">DashMFB Loan Dashboard · period report</p>
+<h1>Loan pipeline report: {{ r.label }}</h1>
+<p class="muted">Compared with the period before: <b>{{ r.prev_label }}</b>. Generated {{ r.generated|date:"j M Y, H:i" }} from the <b>{{ database }}</b> database.</p>
+{% if sample %}<div class="sample">These are FABRICATED sample figures, not the live loan database.</div>{% endif %}
+
+<div class="box">
+  <b>How to use this report</b>
+  <ol>
+    <li><b>Headline</b>: how the period went against the one before. Green arrows are good news, red are bad, whichever way the number moved.</li>
+    <li><b>Decision checklist</b>: each line is a question the business should be able to answer. <b>Red</b> needs a decision or an owner, <b>amber</b> needs watching, <b>green</b> is fine.</li>
+    <li><b>The detail</b> (months, products, pipeline, rejections, Cash for Car) explains the flags. To see the actual applications behind any number, open the dashboard with the same dates and click it.</li>
+    <li><b>Notes for the meeting</b> (last page): write down what was decided, who owns it and by when, then check it in the next report.</li>
+  </ol>
+  <span class="muted">Every application is counted in the period it was submitted in and followed to today, exactly as on the dashboard's Overview and Compare pages.</span>
+</div>
+
+<h2>1. Headline</h2>
+<table>
+  <thead><tr><th>Measure</th><th class="n">{{ r.label }}</th><th class="n">{{ r.prev_label }}</th><th class="n">Change</th></tr></thead>
+  <tbody>
+  {% for m in r.headline %}
+    <tr><td>{{ m.label }}</td><td class="n"><b>{{ m.a|metric:m.kind }}</b></td><td class="n">{{ m.b|metric:m.kind }}</td>
+      <td class="n {{ m.direction|default:'' }}">{% if m.kind == "pct" %}{{ m.change|delta:"pts" }}{% else %}{{ m.change|delta }}{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>2. Decision checklist</h2>
+<p class="muted">The thresholds are starting points (in <code>loans/report.py</code>); adjust them to what the business considers healthy.</p>
+<table>
+  <thead><tr><th>Area</th><th>Question</th><th class="n">This period</th><th>Flag</th><th>If amber or red</th></tr></thead>
+  <tbody>
+  {% for c in r.checklist %}
+    <tr><td><b>{{ c.area }}</b></td><td>{{ c.question }}</td><td class="n">{{ c.value }}</td>
+      <td><span class="chip {{ c.flag|default:'none' }}">{{ c.flag|default:"no data" }}</span></td><td>{{ c.action }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>3. What stands out</h2>
+{% for i in r.insights %}
+  <div class="insight tone-{{ i.tone }}"><b>{{ i.title }}</b>{{ i.detail }} <span class="muted">{{ i.why }}</span></div>
+{% empty %}<p class="muted">Nothing notable in this period.</p>{% endfor %}
+
+<h2 class="pagebreak">4. Month by month</h2>
+<table>
+  <thead><tr><th>Month</th><th class="n">Applications</th><th class="n">Requested</th><th class="n">Disbursed</th><th class="n">Amount disbursed</th><th class="n">Share paid out</th><th class="n">In progress</th><th class="n">Rejected</th><th class="n">Days to disburse</th></tr></thead>
+  <tbody>
+  {% for m in r.months %}
+    <tr><td><b>{{ m.label }}</b></td><td class="n">{{ m.applications|intcomma }}</td><td class="n">{{ m.requested_value|naira }}</td>
+      <td class="n">{{ m.disbursed|intcomma }}</td><td class="n">{{ m.disbursed_value|naira }}</td><td class="n">{{ m.completion_rate|pct }}</td>
+      <td class="n">{{ m.in_progress|add:m.pending|intcomma }}</td><td class="n">{{ m.rejected|intcomma }}</td>
+      <td class="n">{% if m.median_days_to_disburse is not None %}{{ m.median_days_to_disburse }}{% else %}–{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted">Later months have had less time to finish, so their share paid out is naturally lower.</p>
+
+<h2>5. By product</h2>
+<table>
+  <thead><tr><th>Product</th><th class="n">Applications</th><th class="n">vs before</th><th class="n">Disbursed</th><th class="n">Amount disbursed</th><th class="n">vs before</th><th class="n">Share paid out</th><th class="n">vs before</th><th class="n">Days to disburse</th></tr></thead>
+  <tbody>
+  {% for p in r.products %}
+    <tr><td><b>{{ p.label }}</b></td><td class="n">{{ p.now.submitted|intcomma }}</td><td class="n">{{ p.applications_change|delta }}</td>
+      <td class="n">{{ p.now.disbursed|intcomma }}</td><td class="n">{{ p.now.disbursed_value|naira }}</td><td class="n">{{ p.amount_change|delta }}</td>
+      <td class="n">{{ p.now.completion_rate|pct }}</td><td class="n">{{ p.rate_change|delta:"pts" }}</td>
+      <td class="n">{% if p.now.median_days_to_disburse is not None %}{{ p.now.median_days_to_disburse }}{% else %}–{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>6. Pipeline health</h2>
+<p>For the applications submitted in the period: at each step, how many reached it, got through, were turned down there, and are still waiting there today.</p>
+<table>
+  <thead><tr><th>Step</th><th class="n">Reached</th><th class="n">Got through</th><th class="n">Pass rate</th><th class="n">Turned down</th><th class="n">Waiting now</th><th class="n">Waiting 7+ days</th><th class="n">Typical time</th></tr></thead>
+  <tbody>
+  {% for g in r.gates %}
+    <tr><td><b>{{ g.label }}</b>{% if g.is_biggest_dropoff %} <span class="chip red">most lost</span>{% endif %}{% if g.is_slowest %} <span class="chip amber">slowest</span>{% endif %}</td>
+      <td class="n">{{ g.arrived|intcomma }}</td><td class="n">{{ g.passed|intcomma }}</td><td class="n">{{ g.pass_rate|pct }}</td>
+      <td class="n">{{ g.rejected|intcomma }}</td><td class="n">{{ g.waiting|intcomma }}</td><td class="n">{{ g.stalled|intcomma }}</td>
+      <td class="n">{% if g.median_days is not None %}{{ g.median_days }} days{% else %}–{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p><b>Open work not moved in 30+ days (any date):</b> {{ r.stale|intcomma }} of {{ r.open_now|intcomma }} open applications{% if r.stale_by_gate %} &mdash;
+  {% for gate, n in r.stale_by_gate %}{{ gate }} {{ n }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}.</p>
+<p><b>Flow in the period:</b> {{ r.flow.total_submitted|intcomma }} came in; {{ r.flow.total_disbursed|intcomma }} were paid out and {{ r.flow.total_rejected|intcomma }} turned down (whenever they were applied for), so the queue changed by {{ r.flow.net_backlog_change }}.</p>
+
+<h2>7. Rejections and corrections</h2>
+<h3>Why applications were turned down ({{ r.rejections.total|intcomma }} rejected in the period)</h3>
+<table>
+  <thead><tr><th>Reason group</th><th class="n">Rejections</th><th class="n">Share</th><th></th></tr></thead>
+  <tbody>
+  {% for c in r.rejections.categories|slice:":6" %}
+    <tr><td>{{ c.label }}</td><td class="n">{{ c.count|intcomma }}</td><td class="n">{{ c.pct|pct }}</td><td class="barcell"><span class="bar" style="width: {{ c.pct|default:0 }}%"></span></td></tr>
+  {% empty %}<tr><td colspan="4" class="muted">No rejections in the period.</td></tr>{% endfor %}
+  </tbody>
+</table>
+<p class="muted">At which step: {% for s in r.rejections.by_stage %}{{ s.label }} {{ s.count }}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+<h3>Corrections</h3>
+<p>{{ r.corrections.corrected_pct|pct }} of the period's applications were sent back to the applicant at least once; {{ r.corrections.open_now|intcomma }} are waiting on the applicant now.
+{% if r.corrections.outcome_corrected.median_days_to_disburse and r.corrections.outcome_clean.median_days_to_disburse %}
+Sent-back loans took {{ r.corrections.outcome_corrected.median_days_to_disburse }} days to pay out, against {{ r.corrections.outcome_clean.median_days_to_disburse }} for the rest.{% endif %}</p>
+
+<h2 class="pagebreak">8. Cash for Car in depth</h2>
+<div class="cards">
+  <div class="card"><span>Applications</span><b>{{ r.cfc.applications|intcomma }}</b><small class="muted">{{ r.cfc_changes.applications|delta }} vs before ({{ r.cfc_before.applications }})</small></div>
+  <div class="card"><span>Loans disbursed</span><b>{{ r.cfc.disbursed|intcomma }}</b><small class="muted">{{ r.cfc.share_paid_out|pct }} of applications · {{ r.cfc_changes.disbursed|delta }} vs before</small></div>
+  <div class="card"><span>Amount disbursed</span><b>{{ r.cfc.amount_disbursed|naira }}</b><small class="muted">{{ r.cfc_changes.amount|delta }} vs before · average loan {{ r.cfc.average_loan|naira }}</small></div>
+  <div class="card"><span>Dash earned</span><b>{{ r.earnings.dash|naira }}</b><small class="muted">avg {{ r.earnings.dash_share|pct }} of value disbursed</small></div>
+  <div class="card"><span>Floauto earned</span><b>{{ r.earnings.floauto|naira }}</b><small class="muted">avg {{ r.earnings.floauto_share|pct }} of value disbursed</small></div>
+  <div class="card"><span>Earned by both</span><b>{{ r.earned|naira }}</b><small class="muted">{{ r.cfc_changes.earned|delta }} vs before ({{ r.earned_before|naira }})</small></div>
+</div>
+<p class="muted">Every figure here counts the Cash for Car loans <b>applied for</b> in the period, followed to today &mdash; the same loans as the dashboard's Cash for Car page, tiles and Dash vs Floauto card alike.</p>
+
+<h3>Cash for Car steps recorded on the applications</h3>
+<table>
+  <thead><tr><th>Step</th><th class="n">Applications</th><th class="n">Share of applications</th><th></th></tr></thead>
+  <tbody>
+  {% for label, n, share in r.cfc.steps %}
+    <tr><td>{{ label }}</td><td class="n">{{ n|intcomma }}</td><td class="n">{{ share|pct }}</td><td class="barcell"><span class="bar" style="width: {{ share|default:0 }}%"></span></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted">Each line counts the applications with that step recorded; the loan system may record them in a different order. Offers declined, and applications evaluated but never accepted, are lost demand worth following up.</p>
+
+<h3>Earnings by month of application</h3>
+<table>
+  <thead><tr><th>Month applied</th><th class="n">Loans paid out</th><th class="n">Value paid out</th><th class="n">Dash earned</th><th class="n">Floauto earned</th><th class="n">Both</th></tr></thead>
+  <tbody>
+  {% for e in r.earnings_by_month %}
+    <tr><td><b>{{ e.label }}</b></td><td class="n">{{ e.loans|intcomma }}</td><td class="n">{{ e.value|naira }}</td><td class="n">{{ e.dash|naira_full }}</td><td class="n">{{ e.floauto|naira_full }}</td><td class="n">{{ e.both|naira_full }}</td></tr>
+  {% endfor %}
+    <tr><td><b>Total</b></td><td class="n"><b>{{ r.earnings.loans|intcomma }}</b></td><td class="n"><b>{{ r.earnings.value|naira }}</b></td><td class="n"><b>{{ r.earnings.dash|naira_full }}</b></td><td class="n"><b>{{ r.earnings.floauto|naira_full }}</b></td><td class="n"><b>{{ r.earned|naira_full }}</b></td></tr>
+  </tbody>
+</table>
+
+<h3>Risk and collateral (on loans disbursed)</h3>
+<table>
+  <tbody>
+    <tr><td>Average loan-to-value (Floauto)</td><td class="n"><b>{{ r.cfc.average_ltv|pct }}</b></td><td class="muted">How much of the car's value was lent. Lower is safer.</td></tr>
+    <tr><td>Loans above 70% loan-to-value</td><td class="n"><b>{{ r.cfc.ltv_over_70|pct }}</b></td><td class="muted">Little cushion if the car must be sold.</td></tr>
+    <tr><td>Average security coverage</td><td class="n"><b>{% if r.cfc.average_coverage is not None %}{{ r.cfc.average_coverage }}&times;{% else %}–{% endif %}</b></td><td class="muted">Collateral value &divide; loan. Above 1&times; means the car is worth more than the loan.</td></tr>
+    <tr><td>Lent above Floauto's recommended amount</td><td class="n"><b>{{ r.cfc.above_recommended|intcomma }}</b> ({{ r.cfc.above_recommended_pct|pct }})</td><td class="muted">Each should be an approved exception.</td></tr>
+    <tr><td>With a buyout obligation / sale guarantee</td><td class="n"><b>{{ r.cfc.buyout_pct|pct }}</b> / <b>{{ r.cfc.sale_guarantee_pct|pct }}</b></td><td class="muted">Floauto's commitments if the loan goes bad.</td></tr>
+    <tr><td>Typical term</td><td class="n"><b>{% if r.cfc.median_tenor %}{{ r.cfc.median_tenor }} months{% else %}–{% endif %}</b></td><td></td></tr>
+  </tbody>
+</table>
+
+<h3>The two splits between Dash and Floauto (average over loans disbursed)</h3>
+<table>
+  <thead><tr><th></th><th class="n">Dash</th><th class="n">Floauto</th><th></th></tr></thead>
+  <tbody>
+    <tr><td>Fee share (earned when the loan is paid out)</td><td class="n">{{ r.cfc.fee_dash|pct }}</td><td class="n">{{ r.cfc.fee_floauto|pct }}</td><td class="muted">What the earnings above use.</td></tr>
+    <tr><td>Interest-rate share (earned over the loan's life)</td><td class="n">{{ r.cfc.rate_dash|pct }}</td><td class="n">{{ r.cfc.rate_floauto|pct }}</td><td class="muted">Not in the earnings above.</td></tr>
+  </tbody>
+</table>
+
+<h3>Applicants and vehicles</h3>
+<table>
+  <thead><tr><th>Scorecard verdict</th><th class="n">Applications</th><th>Top vehicle makes</th><th class="n">Applications</th></tr></thead>
+  <tbody>
+  {% for row in cfc_pairs %}
+    <tr><td>{{ row.0|default:"" }}</td><td class="n">{{ row.1|default:"" }}</td><td>{{ row.2|default:"" }}</td><td class="n">{{ row.3|default:"" }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="muted">Typical vehicle age: {% if r.cfc.median_vehicle_age is not None %}{{ r.cfc.median_vehicle_age }} years{% else %}not recorded{% endif %}.</p>
+
+<h3>Data gaps</h3>
+<p>{{ r.cfc.missing_fee_shares }} disbursed loan{{ r.cfc.missing_fee_shares|pluralize }} without fee shares (counted as 0% earned) ·
+{{ r.cfc.missing_valuation }} application{{ r.cfc.missing_valuation|pluralize }} without a valuation · {{ r.cfc.missing_vehicle_year }} without the vehicle's year.</p>
+
+<h2 class="pagebreak">9. Notes for the meeting</h2>
+<table class="notes">
+  <thead><tr><th style="width:34%">Decision / action</th><th style="width:22%">Owner</th><th style="width:16%">By when</th><th>Checked in next report</th></tr></thead>
+  <tbody>{% for _ in blank_rows %}<tr><td></td><td></td><td></td><td></td></tr>{% endfor %}</tbody>
+</table>
+
+<h2>Definitions</h2>
+<table>
+  <tbody>
+    <tr><td><b>Applications</b></td><td>Submitted in the period (by the day they were submitted, Lagos time).</td></tr>
+    <tr><td><b>Disbursed / amount disbursed</b></td><td>Of those applications, the ones paid out so far, and their total.</td></tr>
+    <tr><td><b>Share paid out</b></td><td>Disbursed &divide; applications. An earlier period has had longer to finish.</td></tr>
+    <tr><td><b>Days to disburse</b></td><td>The middle value of days from application to payout (half faster, half slower).</td></tr>
+    <tr><td><b>pts</b></td><td>Percentage points: 20.8% against 20.4% is +0.4 pts.</td></tr>
+    <tr><td><b>Waiting 7+ days</b></td><td>Still at a step after 7 days ("stalled").</td></tr>
+    <tr><td><b>Loan-to-value</b></td><td>Loan amount &divide; the car's value (Floauto's figure).</td></tr>
+  </tbody>
+</table>
+<p class="muted">Generated by <code>manage.py period_report</code>. The same functions draw the dashboard, so its figures match the dashboard for the same dates.</p>
+</body>
+</html>

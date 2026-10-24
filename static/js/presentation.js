@@ -1431,7 +1431,8 @@
     }
     // Cash for Car keeps to four charts: loan size and top states share a
     // card (a switch on the card), and the fourth is what Dash and Floauto
-    // earned on the loans disbursed in the period.
+    // earned on the period's applications that were paid out - the same
+    // loans as the Disbursed tiles above it.
     drawDist(code);
     drawSplit(d.commission);
   }
@@ -1452,7 +1453,7 @@
       stat("Value disbursed", money(c.value), moneyFull(c.value)),
       stat("Earned by both", money(c.dash + c.floauto), moneyFull(c.dash + c.floauto)));
     fill($("split-foot"), !c.loans
-      ? "No Cash for Car loans were disbursed in this period."
+      ? "None of this period's Cash for Car applications has been paid out yet."
       : `Earned = loan amount × each one's fee share. On average: Dash ${pct(c.dash_share)}, Floauto ${pct(c.floauto_share)} of the value disbursed.` +
         (c.missing_shares ? ` ${fmt(c.missing_shares)} loan${c.missing_shares === 1 ? " has" : "s have"} no share recorded, counted as 0%.` : ""));
     pie("ch-split-pie", [
@@ -1470,16 +1471,18 @@
       const d = await api("/api/earnings/", windowParams());
       const t = d.totals;
       const p = P();
-      $("drawer-sub").textContent = `${fmt(t.loans)} Cash for Car loan${t.loans === 1 ? "" : "s"} disbursed · ${periodText()}. ` +
-        "Each party earns its share of the loan amount when the loan is paid out. Click a loan for its journey.";
+      $("drawer-sub").textContent = `${fmt(t.loans)} Cash for Car loan${t.loans === 1 ? "" : "s"} ` +
+        `${state.preset === "all" ? "paid out, all time" : `applied for in ${periodText()} and paid out`}. ` +
+        "Each party earns its share of the loan amount. Click a loan for its journey.";
       const share = (v) => (v == null ? "not recorded" : `${Number(v).toFixed(2).replace(/\.?0+$/, "")}%`);
-      const head = ["Disbursed", "Reference", "Applicant", "Amount", "Dash share", "Dash earned", "Floauto share", "Floauto earned"];
+      const head = ["Applied", "Disbursed", "Reference", "Applicant", "Amount", "Dash share", "Dash earned", "Floauto share", "Floauto earned"];
       const table = h("table", { class: "data earnings" },
-        h("thead", null, h("tr", null, head.map((t, i) => h("th", { class: i >= 3 ? "n" : null, text: t })))),
+        h("thead", null, h("tr", null, head.map((t, i) => h("th", { class: i >= 4 ? "n" : null, text: t })))),
         h("tbody", null, d.rows.length ? d.rows.map((r) => h("tr", {
           class: "click", tabindex: "0", title: "Open this loan's journey",
           onclick: () => openJourney(r.product, r.id), onkeydown: (e) => { if (e.key === "Enter") openJourney(r.product, r.id); },
-        }, h("td", { class: "num whitespace-nowrap", text: r.disbursed ? longDate(r.disbursed) : "–" }),
+        }, h("td", { class: "num whitespace-nowrap", text: r.applied ? longDate(r.applied) : "–" }),
+          h("td", { class: "num whitespace-nowrap", text: r.disbursed ? longDate(r.disbursed) : "–" }),
           h("td", { class: "whitespace-nowrap" }, h("b", { text: r.reference })),
           h("td", { text: r.name }),
           h("td", { class: "n", text: moneyFull(r.amount) }),
@@ -1487,9 +1490,9 @@
           h("td", { class: "n" }, h("b", { text: moneyFull(r.dash_earned) })),
           h("td", { class: `n${r.floauto_share == null ? " muted" : ""}`, text: share(r.floauto_share) }),
           h("td", { class: "n" }, h("b", { text: moneyFull(r.floauto_earned) }))))
-          : h("tr", null, h("td", { class: "empty", colspan: "8", text: "No Cash for Car loans were disbursed in this period." }))),
+          : h("tr", null, h("td", { class: "empty", colspan: "9", text: "None of this period's Cash for Car applications has been paid out." }))),
         d.rows.length ? h("tfoot", null, h("tr", null,
-          h("td", { colspan: "3", text: `Total · ${fmt(t.loans)} loan${t.loans === 1 ? "" : "s"}` }),
+          h("td", { colspan: "4", text: `Total · ${fmt(t.loans)} loan${t.loans === 1 ? "" : "s"}` }),
           h("td", { class: "n", text: moneyFull(t.value) }),
           h("td", { class: "n", title: "Dash's earnings as a share of the value disbursed", text: share(t.dash_share) }),
           h("td", { class: "n", text: moneyFull(t.dash) }),

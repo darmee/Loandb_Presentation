@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 from django.contrib.auth.models import AnonymousUser, User
 from django.db import connections
 from django.urls import reverse
+from django.utils import timezone
 
 from loans.models import CashbackRequest
 
@@ -239,10 +240,10 @@ class ApiTests(SignedInTestCase):
         self.assertAlmostEqual(c["floauto_share"], 20_000 * 100 / 3_000_000)
         self.assertEqual(c["missing_shares"], 0)
 
-    def test_a_period_counts_the_loans_disbursed_in_it(self):
+    def test_a_period_counts_its_applications_that_were_paid_out(self):
         now = datetime.now(dt_timezone.utc)
-        self._disbursed_car_loan(1, 1_000_000, "1.5", "1.0", disbursed_at=now - timedelta(days=3))
-        self._disbursed_car_loan(2, 4_000_000, "1.5", "1.0", disbursed_at=now - timedelta(days=200))
+        self._disbursed_car_loan(1, 1_000_000, "1.5", "1.0", created_at=now - timedelta(days=4), disbursed_at=now - timedelta(days=3))
+        self._disbursed_car_loan(2, 4_000_000, "1.5", "1.0", created_at=now - timedelta(days=210), disbursed_at=now - timedelta(days=200))
         week = {"period": "range", "start": (now - timedelta(days=7)).date().isoformat(), "end": now.date().isoformat()}
         recent = self.client.get(reverse("api-dashboard"), week).json()["commission"]
         self.assertEqual((recent["loans"], recent["value"], recent["dash"]), (1, 1_000_000.0, 15_000.0))
@@ -279,12 +280,27 @@ class ApiTests(SignedInTestCase):
 
     def test_the_list_behind_the_card_follows_the_period(self):
         now = datetime.now(dt_timezone.utc)
-        self._disbursed_car_loan(1, 1_000_000, "1.5", "1.0", disbursed_at=now - timedelta(days=3))
-        self._disbursed_car_loan(2, 4_000_000, "1.5", "1.0", disbursed_at=now - timedelta(days=200))
+        self._disbursed_car_loan(1, 1_000_000, "1.5", "1.0", created_at=now - timedelta(days=4), disbursed_at=now - timedelta(days=3))
+        self._disbursed_car_loan(2, 4_000_000, "1.5", "1.0", created_at=now - timedelta(days=210), disbursed_at=now - timedelta(days=200))
         week = {"period": "range", "start": (now - timedelta(days=7)).date().isoformat(), "end": now.date().isoformat()}
         data = self.client.get(reverse("api-earnings"), week).json()
         self.assertEqual([r["reference"] for r in data["rows"]], ["REF-00001"])
         self.assertEqual(data["totals"], self.client.get(reverse("api-dashboard"), week).json()["commission"])
+
+    def test_the_card_counts_the_same_loans_as_the_tiles(self):
+        # Applied for before the period but paid out inside it: neither counts it.
+        # Applied for inside the period, paid out later: both count it.
+        now = datetime.now(dt_timezone.utc)
+        self._disbursed_car_loan(1, 5_000_000, "1.5", "1.0", created_at=now - timedelta(days=20), disbursed_at=now - timedelta(days=3))
+        self._disbursed_car_loan(2, 500_000, "1.5", "1.0", created_at=now - timedelta(days=5), disbursed_at=now - timedelta(days=1))
+        week = {"period": "range", "start": (now - timedelta(days=7)).date().isoformat(), "end": now.date().isoformat()}
+        data = self.client.get(reverse("api-dashboard"), week).json()
+        card, tiles = data["commission"], data["scopes"]["cash-for-car"]["tiles"]
+        self.assertEqual((card["loans"], card["value"]), (tiles["disbursed"], tiles["disbursed_value"]))
+        self.assertEqual((card["loans"], card["value"]), (1, 500_000.0))
+        rows = self.client.get(reverse("api-earnings"), week).json()["rows"]
+        self.assertEqual([(r["reference"], r["applied"]) for r in rows],
+                         [("REF-00002", (now - timedelta(days=5)).astimezone(timezone.get_current_timezone()).date().isoformat())])
 
     def test_no_disbursed_loans_is_all_zeros_not_an_error(self):
         c = self.client.get(reverse("api-dashboard")).json()["commission"]
