@@ -343,6 +343,11 @@
   .field-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
   .field-link { font-size: 12.5px; font-weight: 600; color: var(--accent); text-decoration: none; }
   .field-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+  /* Login page: the password form tucked under "Sign in with Oracle". */
+  .login-fallback { margin-top: 18px; }
+  .login-fallback > summary { display: block; cursor: pointer; text-align: center; list-style: none; }
+  .login-fallback > summary::-webkit-details-marker { display: none; }
+  .login-fallback[open] > summary { margin-bottom: 14px; }
   /* The forgot-password pages: the card alone, centred. */
   .login.login-solo { grid-template-columns: minmax(0, 440px); justify-content: center; }
   .auth-notes { display: grid; gap: 8px; padding-left: 18px; list-style: disc; color: var(--ink-2); font-size: 13.5px; }
