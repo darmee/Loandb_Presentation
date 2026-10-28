@@ -270,3 +270,14 @@ LOGGING = {
                  "propagate": False},
     },
 }
+
+
+# Sign in with OCI IAM (an Oracle identity domain) - see loans/oci_sso.py.
+# The button appears on the login page only when all three are set.
+# OCI_SSO_REDIRECT_URI is optional: without it the callback address is built
+# from DJANGO_PUBLIC_URL, or from the request in development.
+OCI_SSO_ISSUER_URL = os.getenv("OCI_SSO_ISSUER_URL", "").strip().rstrip("/")
+OCI_SSO_CLIENT_ID = os.getenv("OCI_SSO_CLIENT_ID", "").strip()
+OCI_SSO_CLIENT_SECRET = os.getenv("OCI_SSO_CLIENT_SECRET", "").strip()
+OCI_SSO_REDIRECT_URI = os.getenv("OCI_SSO_REDIRECT_URI", "").strip()
+OCI_SSO_ENABLED = bool(OCI_SSO_ISSUER_URL and OCI_SSO_CLIENT_ID and OCI_SSO_CLIENT_SECRET)

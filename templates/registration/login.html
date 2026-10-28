@@ -28,24 +28,47 @@
   <section class="login-card" data-pop>
     <span class="plate"><img src="{% static 'img/logo.png' %}" alt="DashMFB"></span>
     <h2>Welcome back</h2>
+    {% with sso_error=request.GET.sso_error %}
+    {% if oci_sso_enabled %}
+    <p class="sub">Sign in with your DashMFB Oracle account to open the presentation.</p>
+    {% else %}
     <p class="sub">Sign in with your dashboard account to open the presentation.</p>
+    {% endif %}
+    {% if sso_error %}
+    <div class="banner banner-bad" role="alert">
+      {% if sso_error == "no_account" %}Your Oracle account is not linked to a dashboard account. Ask an administrator to add your work email.
+      {% elif sso_error == "expired" %}That sign-in attempt expired or was cancelled. Try again.
+      {% else %}Oracle sign-in is unavailable right now. Use your dashboard password below.{% endif %}
+    </div>
+    {% endif %}
     {% if form.errors %}
     <div class="banner banner-bad" role="alert">
       That username and password did not match. Five failed attempts lock the account for 30 minutes.
     </div>
     {% endif %}
+    {% if oci_sso_enabled %}
+    <a class="btn btn-primary btn-block" href="{% url 'oci_login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">
+      Sign in with Oracle
+    </a>
+    {# The password form is the fallback for when OCI is down. It opens by #}
+    {# itself after a failed password attempt or when OCI could not be reached. #}
+    <details class="login-fallback"{% if form.errors or sso_error == "unavailable" %} open{% endif %}>
+      <summary class="field-link">Oracle sign-in not working? Use your dashboard password</summary>
+    {% endif %}
     <form method="post">{% csrf_token %}
       <label class="field-label" for="id_username">Username</label>
       <input class="input" id="id_username" name="username" autocomplete="username" autocapitalize="none"
-        spellcheck="false" maxlength="150" autofocus required>
+        spellcheck="false" maxlength="150"{% if not oci_sso_enabled or form.errors %} autofocus{% endif %} required>
       <div class="field-row">
         <label class="field-label" for="id_password">Password</label>
         <a class="field-link" href="{% url 'password_reset' %}">Forgot password?</a>
       </div>
       <input class="input" id="id_password" name="password" type="password" autocomplete="current-password" required>
       <input type="hidden" name="next" value="{{ next }}">
-      <button type="submit" class="btn btn-primary btn-block mt-5">Sign in</button>
+      <button type="submit" class="btn btn-block mt-5{% if not oci_sso_enabled %} btn-primary{% endif %}">Sign in</button>
     </form>
+    {% if oci_sso_enabled %}</details>{% endif %}
+    {% endwith %}
     <p class="mt-5 text-center text-xs text-muted">Internal use only</p>
   </section>
 </main>
