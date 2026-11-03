@@ -52,7 +52,6 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
-    "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "axes.middleware.AxesMiddleware",
 ]
 
@@ -218,7 +217,11 @@ CSRF_COOKIE_SAMESITE = "Lax"
 
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
-X_FRAME_OPTIONS = "DENY"
+# Sites allowed to show the dashboard inside a frame (Dash Pulse's tabs),
+# space separated, e.g. https://pulse.dash-mfb.com. Empty: no site may frame
+# it. This goes into the CSP's frame-ancestors (loans/middleware.py) - there is
+# deliberately no X-Frame-Options header, as it cannot name another site.
+FRAME_ANCESTORS = os.getenv("DJANGO_FRAME_ANCESTORS", "").split()
 
 if not DEBUG:
     SESSION_COOKIE_SECURE = True
