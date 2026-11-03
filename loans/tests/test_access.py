@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 
 from django.contrib.auth.models import AnonymousUser, User
 from django.db import connections
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -156,7 +157,17 @@ class PresentationPageTests(SignedInTestCase):
         self.assertNotIn("unsafe-inline' ;", csp)
         script = [d for d in csp.split(";") if d.strip().startswith("script-src")][0]
         self.assertNotIn("unsafe", script)
-        self.assertIn("frame-ancestors 'none'", csp)
+
+    @override_settings(FRAME_ANCESTORS=[])
+    def test_no_site_may_frame_the_dashboard_by_default(self):
+        response = self.client.get(reverse("login"))
+        self.assertIn("frame-ancestors 'none'", response["Content-Security-Policy"])
+        self.assertNotIn("X-Frame-Options", response)
+
+    @override_settings(FRAME_ANCESTORS=["https://pulse.dash-mfb.com"])
+    def test_only_dash_pulse_may_frame_the_dashboard(self):
+        csp = self.client.get(reverse("login"))["Content-Security-Policy"]
+        self.assertIn("frame-ancestors 'self' https://pulse.dash-mfb.com;", csp)
 
     def test_animation_and_scroll_libraries_are_served_from_this_origin(self):
         # Motion and Lenis are vendored: script-src 'self' would block a CDN.
